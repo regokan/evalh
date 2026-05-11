@@ -1,0 +1,77 @@
+# Self-contained Eval Harness smoke test.
+#
+# Self-contained = no DB, no separate HTTP service, no fixtures to spin up.
+# It DOES call a real LLM (Anthropic) — both for the agent and the judge —
+# because Eval Harness exists to evaluate stochastic systems and a
+# deterministic stub would defeat the purpose. Real test, real variability.
+#
+# Required env: ANTHROPIC_API_KEY
+# Run:          evalh run examples/tiny_demo/eval.yaml
+#
+# For the realistic shape with an HTTP agent service, see examples/listing_price/.
+
+eval:
+  name: tiny_demo
+  description: "Self-contained Eval Harness smoke test."
+  tags: [smoke, demo]
+
+dataset:
+  type: yaml
+  path: examples/tiny_demo/cases.yaml
+
+# Two variants of the same stub agent — different `style` metadata produces
+# different answer shapes. Exercises the run matrix and ComparisonReport.
+systems:
+  - name: agent_concise
+    adapter: python_function
+    target: examples.tiny_demo.agent:run
+    metadata:
+      style: concise
+
+  - name: agent_verbose
+    adapter: python_function
+    target: examples.tiny_demo.agent:run
+    metadata:
+      style: verbose
+
+evaluators:
+  - name: must_call_listing_tool
+    type: tool_called
+    config:
+      tool_name: get_listing_details
+
+  - name: must_call_suburb_price_tool
+    type: tool_called
+    config:
+      tool_name: get_average_suburb_price
+
+  - name: answer_mentions_suburb
+    type: contains_text
+    config:
+      any_of: [Richmond, Brunswick, Carlton]
+      case_sensitive: false
+
+  - name: answer_quality
+    type: llm_judge
+    config:
+      model: claude-4-7
+      nl_assertions:
+        - "The answer mentions the listing's suburb."
+        - "The answer states the average suburb price."
+        - "The answer compares the listing price to the suburb average."
+      pass_when: all
+      cost_limit_usd: 0.05
+
+pass_criteria:
+  all_required:
+    - must_call_listing_tool
+    - must_call_suburb_price_tool
+    - answer_mentions_suburb
+
+run:
+  max_concurrency: 4
+  baseline_variant: agent_concise
+
+output:
+  - type: local_files
+    path: runs/

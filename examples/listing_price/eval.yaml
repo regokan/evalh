@@ -1,0 +1,111 @@
+# Canonical Eval Harness sample config.
+# Referenced from README.md and ConfigSchema.md.
+# Runnable: `evalh run examples/listing_price/eval.yaml`
+
+eval:
+  name: listing_price_eval
+  description: "Suburb price agent — listing price questions"
+  owner: you@example.com
+  tags: [agent, real-estate]
+
+metadata:
+  system_version: agent-v3
+  prompt_version: 2026-05-02
+  dataset_version: listing-price-v1
+  judge_model: claude-4-7
+
+dataset:
+  type: yaml
+  path: examples/listing_price/cases.yaml
+
+systems:
+  # Two variants of the same agent. The runner expands cases × variants and
+  # dispatches concurrently. Both hit the same endpoint with a different
+  # `variant` query param so the agent routes internally.
+  #
+  # `response_mapping` points at where each Trace field lives in *the agent's*
+  # HTTP response. Nothing here knows about LLM providers — the agent already
+  # did that work and (presumably) emits its own observability spans to
+  # Langfuse / Phoenix / Arize during execution.
+  - name: agent_main
+    adapter: http
+    endpoint: http://localhost:8000/chat
+    timeout_seconds: 60
+    headers:
+      Authorization: "Bearer ${AGENT_API_KEY}"
+    query_params:
+      variant: main
+    request_template: |
+      { "user_message": "{{ input.user_message }}", "session_id": "{{ case_id }}" }
+    response_mapping:
+      final_answer: $.answer
+      tool_calls: $.tool_calls
+      trace_id: $.langfuse_trace_id              # optional; lets a TraceEnricher fetch the upstream rich trace
+    metadata:
+      branch: main
+      model: claude-4-7
+
+  - name: agent_experimental
+    adapter: http
+    endpoint: http://localhost:8000/chat
+    timeout_seconds: 60
+    headers:
+      Authorization: "Bearer ${AGENT_API_KEY}"
+    query_params:
+      variant: experimental
+    request_template: |
+      { "user_message": "{{ input.user_message }}", "session_id": "{{ case_id }}" }
+    response_mapping:
+      final_answer: $.answer
+      tool_calls: $.tool_calls
+      trace_id: $.langfuse_trace_id
+    metadata:
+      branch: feat/new-prompt
+      model: gpt-5.5
+
+evaluators:
+  - name: must_call_listing_tool
+    type: tool_called
+    config:
+      tool_name: get_listing_details
+
+  - name: must_call_suburb_price_tool
+    type: tool_called
+    config:
+      tool_name: get_average_suburb_price
+
+  - name: answer_mentions_suburb
+    type: contains_text
+    config:
+      any_of: [Richmond, Brunswick, Carlton]
+      case_sensitive: false
+
+  - name: answer_quality
+    type: llm_judge
+    config:
+      model: claude-4-7
+      nl_assertions:
+        - "The answer mentions the listing's suburb."
+        - "The answer states the average house price for that suburb."
+        - "The answer compares the listing price to the suburb average."
+        - "The answer is concise — under three sentences."
+      pass_when: all                              # all | any | majority
+      cost_limit_usd: 0.05
+
+pass_criteria:
+  all_required:
+    - must_call_listing_tool
+    - must_call_suburb_price_tool
+    - answer_quality
+
+run:
+  max_concurrency: 4
+  retry:
+    max_attempts: 2
+    on: [timeout, http_5xx]
+    backoff_seconds: 1.0
+  baseline_variant: agent_main
+
+output:
+  - type: local_files
+    path: runs/

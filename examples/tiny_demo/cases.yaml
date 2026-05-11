@@ -1,0 +1,42 @@
+schema_version: "1.0"
+
+dataset:
+  name: tiny_demo_v1
+  description: "Three deterministic cases for the Eval Harness smoke test."
+
+cases:
+  - id: tiny_demo_001
+    input:
+      user_message: "What is the average house price near listing ABC123?"
+    metadata:
+      listing_id: ABC123
+      suburb: Richmond
+    expected:
+      must_call_tools: [get_listing_details, get_average_suburb_price]
+      answer_should_include: [Richmond]
+      facts:
+        suburb_average_price: 1200000
+
+  - id: tiny_demo_002
+    input:
+      user_message: "Is listing XYZ789 expensive for its suburb?"
+    metadata:
+      listing_id: XYZ789
+      suburb: Brunswick
+    expected:
+      must_call_tools: [get_listing_details, get_average_suburb_price]
+      answer_should_include: [Brunswick, above]
+      facts:
+        suburb_average_price: 950000
+
+  - id: tiny_demo_003
+    input:
+      user_message: "Compare listing DEF456 to its suburb average."
+    metadata:
+      listing_id: DEF456
+      suburb: Carlton
+    expected:
+      must_call_tools: [get_listing_details, get_average_suburb_price]
+      answer_should_include: [Carlton]
+      facts:
+        suburb_average_price: 1450000

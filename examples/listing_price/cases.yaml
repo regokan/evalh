@@ -1,0 +1,48 @@
+# Canonical Eval Harness sample dataset.
+# Referenced from README.md and ConfigSchema.md.
+# Used by examples/listing_price/eval.yaml.
+
+schema_version: "1.0"
+
+dataset:
+  name: listing_price_v1
+  description: "Listing-price questions covering 3 suburbs"
+  owner: you@example.com
+
+cases:
+  - id: listing_price_001
+    input:
+      user_message: "What is the average house price near listing ABC123?"
+    metadata:
+      listing_id: ABC123
+      suburb: Richmond
+      difficulty: easy
+    expected:
+      must_call_tools: [get_listing_details, get_average_suburb_price]
+      answer_should_include: [Richmond, average]
+      facts:
+        suburb_average_price: 1200000
+
+  - id: listing_price_002
+    input:
+      user_message: "Is listing XYZ789 expensive for its suburb?"
+    metadata:
+      listing_id: XYZ789
+      suburb: Brunswick
+      difficulty: medium
+    expected:
+      must_call_tools: [get_listing_details, get_average_suburb_price]
+      answer_should_include: [Brunswick, above, suburb average]
+
+  - id: listing_price_003
+    input:
+      user_message: "Compare listing DEF456 to its suburb average."
+    metadata:
+      listing_id: DEF456
+      suburb: Carlton
+      difficulty: medium
+    expected:
+      must_call_tools: [get_listing_details, get_average_suburb_price]
+      answer_should_include: [Carlton]
+      facts:
+        suburb_average_price: 1450000

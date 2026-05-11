@@ -1,0 +1,90 @@
+# Online evaluation example.
+#
+# Pulls historical traces from Langfuse, runs evaluators against them
+# (no system call for the `production_replay` variant), and optionally
+# backtests one or more candidate systems against the same inputs.
+#
+# Runnable: `evalh run examples/online_eval/eval.yaml`
+
+eval:
+  name: production_quality_check
+  description: "Score last week's production traffic; backtest candidates against the same inputs."
+  tags: [online-eval, langfuse]
+
+metadata:
+  judge_model: claude-4-7
+  source: langfuse-production
+
+# DatasetAdapter pulls from Langfuse. `embed_full_trace: true` means each
+# case carries the full upstream Trace, which the `replay` SystemAdapter unwraps.
+dataset:
+  type: langfuse
+  api_key: ${LANGFUSE_API_KEY}
+  host: ${LANGFUSE_HOST}
+  filter:
+    tags: [production]
+    timestamp_gt: "2026-04-26T00:00:00Z"
+    user_score_lt: 0.5                 # focus on traces the user rated poorly
+  sample: 100                          # cap blast radius for the LLM judge
+  embed_full_trace: true
+
+systems:
+  # Variant 1: the production trace as it actually ran. No system call.
+  - name: production_replay
+    adapter: replay
+    metadata:
+      kind: replay
+      source: langfuse-production
+
+  # Variant 2: backtest a candidate prompt against the same inputs.
+  # Comment this out if you only want to score production.
+  - name: candidate_v4
+    adapter: http
+    endpoint: http://localhost:8000/chat
+    timeout_seconds: 60
+    headers:
+      Authorization: "Bearer ${AGENT_API_KEY}"
+    request_template: |
+      { "user_message": "{{ input.user_message }}", "session_id": "{{ case_id }}" }
+    response_mapping:
+      final_answer: $.answer
+      tool_calls: $.tool_calls
+    metadata:
+      kind: candidate
+      branch: feat/v4-prompt
+      model: claude-4-7
+
+evaluators:
+  - name: must_call_listing_tool
+    type: tool_called
+    config:
+      tool_name: get_listing_details
+
+  - name: answer_quality
+    type: llm_judge
+    config:
+      model: claude-4-7
+      nl_assertions:
+        - "The answer mentions the listing's suburb."
+        - "The answer states the average house price for that suburb."
+        - "The answer compares the listing price to the suburb average."
+      pass_when: all
+      cost_limit_usd: 0.05
+
+  - name: thinking_within_budget
+    type: thinking_tokens_under
+    config:
+      threshold: 4000
+
+pass_criteria:
+  all_required:
+    - must_call_listing_tool
+    - answer_quality
+
+run:
+  max_concurrency: 8
+  baseline_variant: production_replay   # ComparisonReport diffs candidates against this
+
+output:
+  - type: local_files
+    path: runs/
