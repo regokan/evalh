@@ -1,0 +1,130 @@
+[project]
+name = "eval-harness"
+version = "0.0.1"
+description = "A boring, config-driven harness for evaluating AI systems."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "Eval Harness contributors" }]
+keywords = ["llm", "evaluation", "agents", "eval", "harness"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+
+# Core runtime dependencies — what the runner, registry, factories, built-in
+# adapters, and built-in deterministic evaluators import. Anything provider-
+# specific (LLM SDKs, observability platforms, storage backends, workspace
+# implementations) lives under [project.optional-dependencies] so consumers
+# only pay for what they use.
+dependencies = [
+  "pydantic>=2.7,<3",
+  "pyyaml>=6,<7",
+  "httpx>=0.27,<1",
+  "click>=8.1,<9",
+  "rich>=13,<14",
+  "jsonpath-ng>=1.6,<2",
+]
+
+[project.optional-dependencies]
+# LLM-judge backends — install at least one to use the `llm_judge` evaluator.
+# `examples/tiny_demo/` also depends on `[anthropic]` for its agent.
+anthropic = ["anthropic>=0.40,<1"]
+openai    = ["openai>=1.40,<2"]      # judge support lands when implemented
+
+# Storage / workspace / observability backends.
+sqlite   = ["aiosqlite>=0.20"]
+postgres = ["asyncpg>=0.29"]
+langfuse = ["langfuse>=2"]
+git      = ["pygit2>=1.15"]
+docker   = ["docker>=7"]
+otel     = ["opentelemetry-sdk>=1.27", "opentelemetry-exporter-otlp>=1.27"]
+
+all = [
+  "anthropic>=0.40,<1",
+  "openai>=1.40,<2",
+  "aiosqlite>=0.20",
+  "asyncpg>=0.29",
+  "langfuse>=2",
+  "pygit2>=1.15",
+  "docker>=7",
+  "opentelemetry-sdk>=1.27",
+  "opentelemetry-exporter-otlp>=1.27",
+]
+
+[project.scripts]
+evalh = "eval_harness.cli.main:cli"
+
+# Built-in adapters and evaluators register here. Third-party extensions
+# register the same way in their own pyproject.toml. See docs/Adapters.md
+# and docs/Evaluators.md for the contracts.
+[project.entry-points."eval_harness.system_adapters"]
+http            = "eval_harness.adapters.system.http_adapter:HttpSystemAdapter"
+python_function = "eval_harness.adapters.system.python_function_adapter:PythonFunctionAdapter"
+
+[project.entry-points."eval_harness.evaluators"]
+contains_text = "eval_harness.evaluators.contains_text:ContainsTextEvaluator"
+tool_called   = "eval_harness.evaluators.tool_called:ToolCalledEvaluator"
+llm_judge     = "eval_harness.evaluators.llm_judge:LlmJudgeEvaluator"
+exact_match   = "eval_harness.evaluators.exact_match:ExactMatchEvaluator"
+
+[project.entry-points."eval_harness.dataset_adapters"]
+yaml = "eval_harness.adapters.dataset.yaml_dataset_adapter:YamlDatasetAdapter"
+
+[project.entry-points."eval_harness.trace_stores"]
+local_files = "eval_harness.adapters.trace.local_files_store:LocalFilesStore"
+
+[project.entry-points."eval_harness.workspaces"]
+tempdir_snapshot = "eval_harness.adapters.workspace.tempdir_snapshot_adapter:TempdirSnapshotAdapter"
+
+[project.urls]
+Homepage = "https://github.com/regokan/evalh"
+Issues   = "https://github.com/regokan/evalh/issues"
+
+# ---- Poetry-specific ---------------------------------------------------------
+# Poetry 2.x reads PEP 621 [project] above and only needs its own section for
+# things PEP 621 doesn't cover (dev groups, package layout overrides, etc).
+
+[tool.poetry]
+packages = [{ include = "eval_harness" }]
+
+[tool.poetry.group.dev.dependencies]
+pytest         = "^8.3"
+pytest-asyncio = "^0.24"
+pytest-cov     = "^5"
+respx          = "^0.21"
+ruff           = "^0.7"
+mypy           = "^1.13"
+
+[build-system]
+requires = ["poetry-core>=2.0"]
+build-backend = "poetry.core.masonry.api"
+
+# ---- Tool config -------------------------------------------------------------
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+addopts = "-ra --strict-markers"
+markers = [
+  "integration: end-to-end tests that hit a real LLM (require ANTHROPIC_API_KEY)",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM", "RUF"]
+ignore = ["E501"]  # line-length warnings handled by formatter
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+ignore_missing_imports = true

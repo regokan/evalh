@@ -1,0 +1,41 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# Poetry / uv / pip — commit poetry.lock for reproducible builds
+.venv/
+venv/
+.python-version
+
+# Eval Harness run output
+runs/*
+!runs/.gitkeep
+
+# Editor / OS
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# Gas Town writes a per-machine CLAUDE.local.md when CLAUDE.md is tracked.
+# Keep it untracked so polecat lifecycle state doesn't pollute the repo diff.
+CLAUDE.local.md
+
+# Claude Code per-machine permissions and audit log. Local-only.
+.claude/settings.local.json
+
+# Secrets — defensive even though the repo is public
+.env
+.env.*
+!.env.example
