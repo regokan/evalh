@@ -69,6 +69,7 @@ class RunOptions(BaseModel):
     per_variant_concurrency: int | None = None
     retry: RetryPolicy = Field(default_factory=RetryPolicy)
     baseline_variant: str | None = None
+    cost_limit_usd: float | None = None
 
 
 class OutputConfig(BaseModel):

@@ -212,3 +212,40 @@ wait
 Each run gets its own `runs/<run_id>/` directory. They don't share anything. If two evals share a system endpoint, scale `max_concurrency` down per-run so you don't overload it.
 
 For coordinated runs (one shared LLM-judge budget across many evals, or one summary report aggregating many runs), wait for v0.2's "run group" feature — not yet implemented.
+
+---
+
+## Cost guardrails
+
+`run.cost_limit_usd` (v0.2) is a **run-level** soft cap on accumulated cost.
+After each cell completes, the runner sums `trace.metrics.cost_usd` (Nones
+contribute zero); when the running total has reached the limit, any cell
+still queued behind the semaphore short-circuits — the runner emits a
+`Trace` with `error.type = "cost_limit"` instead of dispatching the adapter.
+Cells already in flight finish naturally; this is a soft guardrail, not a
+hard guarantee.
+
+```yaml
+run:
+  cost_limit_usd: 5.00
+```
+
+It composes with the per-evaluator `cost_limit_usd` on `llm_judge` (v0)
+rather than replacing it:
+
+| Where | What it caps | Where it lives |
+|---|---|---|
+| `evaluators[].config.cost_limit_usd` | One judge call's estimated cost. Refuses the call if the prompt would exceed. | [Evaluators.md > llm_judge](Evaluators.md) |
+| `run.cost_limit_usd` | Total cost across all completed cells in this run. Refuses to dispatch new cells once tripped. | [ConfigSchema.md](ConfigSchema.md) |
+
+A `cost_limit` Trace looks like any other errored trace in `evalh inspect`
+and `evalh compare`:
+
+- `Trace.error.type == "cost_limit"` and `error.message` records the
+  accumulated total and the configured limit.
+- The cell's `results: []` — no evaluators ran against a short-circuited
+  trace, which is the same shape as a `timeout` or `adapter_error` cell.
+
+Re-run with a higher `cost_limit_usd` to extend coverage; `evalh
+re-evaluate` does not re-trigger the guardrail because no fresh system
+calls happen.

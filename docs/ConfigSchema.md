@@ -74,6 +74,7 @@ output        list of TraceStores; first one is canonical, others are mirrors
 | `run.retry.on` | list[enum] | no | Retry only on these error types: `timeout`, `http_5xx`, `adapter_error`. |
 | `run.retry.backoff_seconds` | float | no | Exponential base. |
 | `run.baseline_variant` | string | no | Used by ComparisonReport in `summary.yaml`. |
+| `run.cost_limit_usd` | float | no | Run-level cost guardrail. When accumulated `trace.metrics.cost_usd` across completed cells reaches this value, queued cells are short-circuited with a `cost_limit` Trace. Independent from and additive to per-evaluator `cost_limit_usd`. |
 | `output[]` | list[dict] | yes | At least one TraceStore. Single mapping is accepted and coerced to a one-element list. |
 | `output[].type` | enum | yes | One of the registered TraceStores. |
 | `output[].path` | string | type-dependent | Required for `local_files`. |

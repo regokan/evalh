@@ -15,6 +15,7 @@ from eval_harness.core.models import (
     TraceError,
 )
 from eval_harness.core.time import utc_now
+from eval_harness.runner.cost_accumulator import CostAccumulator
 from eval_harness.runner.summary import build_summary
 
 if TYPE_CHECKING:
@@ -33,6 +34,8 @@ class CellOutcome:
 
 async def run_eval(plan: RunPlan) -> RunSummary:
     semaphores = _build_semaphores(plan)
+    accumulator = CostAccumulator()
+    cost_limit = plan.config.run.cost_limit_usd
 
     async with AsyncExitStack() as stack:
         await stack.enter_async_context(plan.trace_store)
@@ -51,18 +54,59 @@ async def run_eval(plan: RunPlan) -> RunSummary:
 
         async def run_cell(case: EvalCase, variant: RunVariant) -> CellOutcome:
             async with semaphores[variant.name]:
-                return await _run_one(case, variant, plan)
+                # Soft guardrail: check inside the semaphore so still-queued
+                # cells short-circuit instead of dispatching to the adapter.
+                # In-flight cells (already past this check) finish naturally.
+                if accumulator.check_limit(cost_limit):
+                    return _cost_limit_outcome(
+                        case, variant, plan.run_id, accumulator.total_usd(), cost_limit
+                    )
+                outcome = await _run_one(case, variant, plan)
+                accumulator.tally(outcome.trace)
+                return outcome
 
         outcomes = await asyncio.gather(
             *[run_cell(c, v) for c, v in cells],
             return_exceptions=False,
         )
 
+        # Persist short-circuited traces so summary.yaml + traces.jsonl are
+        # consistent with what the runner returns. _run_one already saved
+        # the others.
+        for outcome in outcomes:
+            if outcome.trace.error is not None and outcome.trace.error.type == "cost_limit":
+                await plan.trace_store.save_trace(outcome.trace)
+
         summary = build_summary(outcomes, plan)
         await plan.trace_store.save_summary(summary)
         return summary
 
     raise RuntimeError("unreachable: AsyncExitStack never re-raises")
+
+
+def _cost_limit_outcome(
+    case: EvalCase,
+    variant: RunVariant,
+    run_id: str,
+    accumulated: float,
+    limit: float | None,
+) -> CellOutcome:
+    now = utc_now()
+    trace = Trace.from_error(
+        case.id,
+        variant.name,
+        "cost_limit",
+        (
+            f"cost limit ${limit:.4f} exceeded, accumulated ${accumulated:.4f}"
+            if limit is not None
+            else f"cost limit exceeded, accumulated ${accumulated:.4f}"
+        ),
+    )
+    trace.run_id = run_id
+    trace.started_at = now
+    trace.finished_at = now
+    trace.latency_ms = 0
+    return CellOutcome(case=case, variant=variant, trace=trace, results=[])
 
 
 def _build_semaphores(plan: RunPlan) -> dict[str, asyncio.Semaphore]:
