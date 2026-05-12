@@ -4,6 +4,83 @@ All notable changes to this project are recorded here. Schema: per-release
 sections in reverse chronological order. v0.x lines map 1:1 to the spec
 in [`docs/Roadmap.md`](docs/Roadmap.md).
 
+## v1.x — 2026-05-12
+
+**"It plugs into the rest of the ecosystem."** Drift detection,
+webhook reporting, three more observability platforms.
+
+**Drift detection**
+
+- `eval_harness.runner._deltas` — shared pure-function primitives
+  (`pass_map`, `compute_pass_rate_delta`, `compute_regressions`,
+  `compute_improvements`, `compute_evaluator_deltas`,
+  `compute_latency_cost_deltas`). Same arithmetic powers within-run
+  variant comparison (`ComparisonReport(kind='ad_hoc')`) and
+  across-run drift detection (`kind='drift'`) — DRY win.
+- `eval_harness.core.baseline` — symlink-based baseline marker.
+  `runs/baselines/<eval_name>/` is the source of truth; atomic
+  replace via write-temp-then-rename, relative-target symlinks
+  survive runs-tree moves.
+- `ComparisonReport` additive fields: `kind`, `baseline_run_id`,
+  `regressions_count`, `improvements_count`. Defaults preserve
+  backwards compat — existing `summary.yaml` files load unchanged.
+- **CLI**: `evalh promote <run_dir>` creates/replaces the symlink;
+  `evalh drift <run_dir>` resolves the baseline (explicit
+  `--baseline` > promoted symlink > graceful "no baseline" notice),
+  prints markdown to stdout, writes `<run_dir>/drift.yaml`.
+  `--exit-nonzero-on-regression` gates CI while still persisting
+  the report.
+
+**Webhook TraceStore**
+
+- `output: webhook` posts a per-run summary to Slack / Discord /
+  Linear. `save_summary` is the only meaningful hook; per-cell
+  hooks no-op (webhook reporting is summary-grained).
+- Canonical `SummaryMessage` struct + `format_slack` /
+  `format_discord` / `format_linear` formatters keep Block Kit /
+  embed / GraphQL quirks out of the builder.
+- Drift-aware: when the run carries `comparison.kind='drift'`, the
+  formatted message highlights regression / improvement counts,
+  pass-rate Δ, and the top regression case IDs (Slack warning
+  emoji, Discord red color, Linear "Top regressions" markdown).
+- Failure-soft via v1-supplement's multi-sink path —
+  non-first-sink webhook failures land on `RunSummary.sink_errors`
+  rather than aborting the run.
+- Slack + Discord use plain httpx POSTs (no SDK). Linear uses the
+  `linear-api` SDK via the new `[webhook]` extra.
+
+**Three new platform integrations**
+
+- **Arize** (triplet): `ArizeTraceStore(OtelTraceStore)` — thin
+  subclass that adjusts endpoint + resource attributes; span
+  emission is inherited unchanged. Shares the underlying
+  `OtelClient` registry from v1-supplement — no parallel exporter
+  stack. Plus `ArizeDatasetAdapter` (`embed_full_trace` -> replay)
+  and `ArizeTraceEnricher`. `[arize]` extra; `arize-otel` SDK is
+  ceremonial (httpx + OtelClient cover everything).
+- **Helicone** (single adapter): `HeliconeDatasetAdapter` pulls
+  historical request logs via the `Helicone-Auth: Bearer <key>`
+  REST API. `[helicone] = []` marker extra (REST-only, httpx in
+  core).
+- **Braintrust** (triplet, parallel polecat).
+
+**Scheduled-run recipe**
+
+- `templates/eval-daily.yml` — reference GitHub Actions workflow
+  consumers copy. Cron + workflow_dispatch -> `evalh run` ->
+  resolve newest run dir -> `evalh drift
+  --exit-nonzero-on-regression` -> webhook sink in
+  `eval.yaml > output:` -> artifact upload regardless of
+  pass/fail. Documented in
+  `docs/CI.md → "Scheduled runs with drift alerts"`.
+
+**Boundary security**
+
+- `eval_harness/core/url.py.validate_url_scheme` — shared helper
+  used by `http_adapter` and `webhook_trace_store`. Rejects
+  `file://`, `gopher://`, plain `http://` to non-localhost, etc.
+  Keeps adapters from drifting on the SSRF defense.
+
 ## v1-supplement — 2026-05-12
 
 **"It plugs into observability platforms."** Eval Harness coexists with

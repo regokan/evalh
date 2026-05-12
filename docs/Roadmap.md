@@ -139,11 +139,12 @@ Every milestone adds extension points or tightens the core. None of them rewrite
 
 ### Adds
 
-- Trace store: `arize`, `braintrust`
-- Dataset adapter: `helicone`, `braintrust`
-- Replay: take a trace, replay against a different system variant
-- Drift detection: compare "today's" pass-rate against a saved baseline; alert on regression
-- Webhook adapter: post run summaries to Slack / Discord / Linear
+- Platform triplets: `arize`, `braintrust` (Dataset + TraceStore + TraceEnricher). Arize composes OTel (thin layer; no parallel exporter stack).
+- Dataset adapter: `helicone` (REST-only; httpx in core).
+- Drift detection: `evalh promote` (atomic symlink at `runs/baselines/<eval>/`) + `evalh drift` (compares against baseline, writes `drift.yaml` with `ComparisonReport(kind='drift')`; `--exit-nonzero-on-regression` gates CI).
+- Webhook TraceStore: `slack`, `discord`, `linear`. Drift-aware: when the run carries `kind='drift'`, the formatted message highlights regressions + pass-rate Δ.
+- Scheduled-run recipe: `templates/eval-daily.yml` + `docs/CI.md → "Scheduled runs with drift alerts"`.
+- *(replay against a different system variant — already shipped in v1: `replay` SystemAdapter + `embed_full_trace` DatasetAdapter pattern, demonstrated by [`examples/online_eval/`](../examples/online_eval/). Listed here for completeness; no separate v1.x bead.)*
 
 ### Done when
 
