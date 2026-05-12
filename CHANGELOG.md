@@ -4,6 +4,83 @@ All notable changes to this project are recorded here. Schema: per-release
 sections in reverse chronological order. v0.x lines map 1:1 to the spec
 in [`docs/Roadmap.md`](docs/Roadmap.md).
 
+## v1-supplement — 2026-05-12
+
+**"It plugs into observability platforms."** Eval Harness coexists with
+Langfuse, Phoenix (Arize), and any OTel-compatible backend (Tempo,
+Honeycomb, Datadog, Jaeger, Grafana).
+
+**Sixth adapter family**
+
+- `TraceEnricher` — Protocol + factory + runner integration. Enrichers
+  run between the SystemAdapter and evaluators; failures are caught and
+  recorded on `trace.extra.enrichment_errors` rather than aborting the
+  cell. The load-bearing failure-soft invariant for production observability
+  hiccups.
+
+**OTel pair**
+
+- `OtelTraceStore` — pushes spans (root per `(case, variant)`, children
+  per tool call, sibling spans per evaluator result, one run-summary
+  span). Write-only by design; pair with a queryable canonical sink.
+- `OtelTraceEnricher` — fetches upstream spans via a `{trace_id}` URL
+  pattern with bounded ingestion-lag retry, JSONPath merge rules into
+  any Trace path.
+- `_platforms/otel.py` — shared `OtelClient`. Reference-counted
+  registry keyed on (endpoint, headers, protocol, resource_attributes)
+  so multiple OTel-shaped adapters in the same run share one
+  `TracerProvider`.
+
+**Langfuse triplet**
+
+- `LangfuseDatasetAdapter`, `LangfuseTraceStore`, `LangfuseTraceEnricher`
+  + shared `_platforms/langfuse.LangfuseClient`. Refcounted instance per
+  `(host, api_key)`; tests inject a programmable in-memory SDK with a
+  deterministic clock so ingestion-lag scenarios are reproducible.
+
+**Phoenix triplet**
+
+- `PhoenixTraceStore(OtelTraceStore)` — *thin* subclass: only the
+  endpoint (`<base>/v1/traces`) and resource attributes
+  (`openinference.project.name`) differ. Span emission logic is the
+  parent class's, unchanged. Two PhoenixTraceStores or a Phoenix +
+  plain OTel store with matching targets share a single
+  `TracerProvider` via the platform registry.
+- `PhoenixTraceEnricher`, `PhoenixDatasetAdapter` — both run over
+  Phoenix's REST API via `_platforms/phoenix.PhoenixClient` (httpx
+  query side + OtelClient push side). `[phoenix]` extra adds
+  `arize-phoenix-otel` for users who want OpenInference
+  instrumentation alongside.
+
+**Multi-sink output**
+
+- `output:` accepts a list of TraceStores. The first sink is canonical
+  (failures abort the run); the rest are best-effort mirrors —
+  failures land on `RunSummary.sink_errors`. Single-mapping
+  `output:` still validates and coerces to a one-element list for
+  backwards compatibility with v0/v0.1 configs.
+
+**Streaming HTTP**
+
+- HTTP SystemAdapter `stream: true` mode parses SSE chunks, records
+  `TraceMetrics.latency_first_token_ms`, `latency_last_token_ms`,
+  `tokens_per_second`, `stream_chunks`, `stream_completed`.
+- Three streaming-only evaluators ship: `latency_first_token_under`,
+  `tokens_per_second_above`, `stream_completed`.
+
+**Tests**
+
+- All three platform families have hermetic test suites:
+  `InMemorySpanExporter` for OTel-shaped sinks, `respx` for HTTP
+  query APIs, deterministic clock for ingestion-lag retry.
+- New integration test wires `fixture` DatasetAdapter ->
+  `replay` SystemAdapter -> multi-sink (`local_files` + OTel)
+  end-to-end; the fake collector receives every span with
+  `run_id` + `case_id` attributes.
+- `git_branch` worktree naming switched from `id(branch_ref)` to a
+  `uuid4()`-derived suffix — fixes a concurrent-thread collision
+  surfaced by the v1 three-branch integration test.
+
 ## v1 — 2026-05-12
 
 **"It tests systems that mutate the world."** Coding agents, infra agents,

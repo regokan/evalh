@@ -121,7 +121,7 @@ Four examples ship with the package:
 
 - [`examples/tiny_demo/`](examples/tiny_demo/) — **self-contained smoke test.** Uses `python_function` against a stub agent. Runs offline, no API keys required. This is the install-sanity-check.
 - [`examples/listing_price/`](examples/listing_price/) — **realistic shape reference.** HTTP adapter, two variants, an LLM judge. Requires your own agent service at the configured endpoint. Adapt this for your project.
-- [`examples/online_eval/`](examples/online_eval/) — **replay-style online evaluation.** Fixture DatasetAdapter + `replay` SystemAdapter, fully offline. The same shape works unchanged once langfuse / phoenix DatasetAdapters land.
+- [`examples/online_eval/`](examples/online_eval/) — **replay-style online evaluation.** Fixture DatasetAdapter + `replay` SystemAdapter, fully offline. The same shape slots into Langfuse / Phoenix / OTel DatasetAdapters (shipped in v1-supplement) by changing the `dataset.type` line.
 - [`examples/coding_agent/`](examples/coding_agent/) — **workspace-mutating agent.** Claude-Haiku patches a fixture repo; the `command` evaluator runs pytest inside the artifact directory. Requires `ANTHROPIC_API_KEY` (not in CI).
 
 ```bash

@@ -18,6 +18,7 @@ import shutil
 import socket
 import subprocess
 import tempfile
+import uuid
 from pathlib import Path
 from types import TracebackType
 from typing import TYPE_CHECKING, Any, Self
@@ -245,7 +246,12 @@ def _add_worktree(repo_path: Path, branch: str) -> tuple[str, Path]:
     parent = Path(tempfile.mkdtemp(prefix="evalh-git-branch-"))
     # pygit2 expects the worktree path to not exist yet.
     worktree_dir = parent / "wt"
-    name = f"evalh-{os.getpid()}-{id(branch_ref):x}"
+    # Use uuid4 for the worktree name: `id(branch_ref)` is the memory
+    # address of an ephemeral pygit2 wrapper that can be GC'd + reused
+    # between concurrent threads, causing colliding worktree directory
+    # names under `.git/worktrees/`. uuid4 is collision-free without
+    # threading the registry through callers.
+    name = f"evalh-{os.getpid()}-{uuid.uuid4().hex[:12]}"
     wt = repo.add_worktree(name, str(worktree_dir), branch_ref)
     return name, Path(wt.path)
 
