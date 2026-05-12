@@ -208,7 +208,16 @@ def _enforce_invariants(
     trace.run_id = run_id
     trace.case_id = case.id
     trace.variant_name = variant.name
-    # Latency invariant: the runner is the source of truth, not the adapter.
+    # Replay traces preserve the ORIGINAL upstream timestamps, latency, and
+    # metrics byte-for-byte — the trace describes what happened, not what the
+    # harness did with it. The runner must not overwrite. See
+    # docs/Observability.md > Pattern 4. The opt-out is explicit (the runner
+    # checks ``extra.source``) rather than implicit (a flag the adapter sets)
+    # so future debuggers can grep for it.
+    if trace.extra.get("source") == "replay":
+        return
+    # Latency invariant: for everything else the runner is the source of
+    # truth, not the adapter.
     trace.started_at = started_at  # type: ignore[assignment]
     trace.finished_at = finished_at  # type: ignore[assignment]
     delta = (finished_at - started_at).total_seconds()  # type: ignore[operator]

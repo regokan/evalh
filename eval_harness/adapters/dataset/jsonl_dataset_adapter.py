@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
 from pydantic import ValidationError
 
@@ -17,6 +17,8 @@ class JsonlDatasetAdapter:
     cases come from notebook output or production telemetry pipelines that
     already emit JSONL.
     """
+
+    embed_full_trace: ClassVar[bool] = False
 
     def __init__(self, path: str | Path, **kwargs: Any) -> None:
         self.path = Path(path)

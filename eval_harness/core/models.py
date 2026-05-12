@@ -4,7 +4,7 @@ import traceback
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, PrivateAttr
 
 from eval_harness.core.time import utc_now
 
@@ -24,6 +24,12 @@ class EvalCase(BaseModel):
     input: dict[str, Any]
     metadata: dict[str, Any] = Field(default_factory=dict)
     expected: ExpectedBehavior = Field(default_factory=ExpectedBehavior)
+
+    # Private attribute populated by DatasetAdapters that set
+    # `embed_full_trace=true` (e.g. langfuse, phoenix, fixture). The replay
+    # SystemAdapter unwraps this back into a `Trace` for online evaluation.
+    # Private = excluded from serialization; the case JSON stays the same.
+    _embedded_trace: Trace | None = PrivateAttr(default=None)
 
 
 class RunVariant(BaseModel):

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
 import yaml
 from pydantic import ValidationError
@@ -11,6 +11,10 @@ from eval_harness.core.models import EvalCase, ExpectedBehavior
 
 
 class YamlDatasetAdapter:
+    # YAML datasets are authored by hand and have no notion of an upstream
+    # trace; the embed_full_trace contract is satisfied vacuously.
+    embed_full_trace: ClassVar[bool] = False
+
     def __init__(self, path: str | Path, **kwargs: Any) -> None:
         self.path = Path(path)
         self._extra = kwargs

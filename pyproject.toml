@@ -70,6 +70,7 @@ evalh = "eval_harness.cli.main:cli"
 http            = "eval_harness.adapters.system.http_adapter:HttpSystemAdapter"
 python_function = "eval_harness.adapters.system.python_function_adapter:PythonFunctionAdapter"
 cli             = "eval_harness.adapters.system.cli_adapter:CliSystemAdapter"
+replay          = "eval_harness.adapters.system.replay_adapter:ReplaySystemAdapter"
 
 [project.entry-points."eval_harness.evaluators"]
 contains_text = "eval_harness.evaluators.contains_text:ContainsTextEvaluator"
@@ -81,8 +82,9 @@ latency_under = "eval_harness.evaluators.latency_under:LatencyUnderEvaluator"
 cost_under    = "eval_harness.evaluators.cost_under:CostUnderEvaluator"
 
 [project.entry-points."eval_harness.dataset_adapters"]
-yaml  = "eval_harness.adapters.dataset.yaml_dataset_adapter:YamlDatasetAdapter"
-jsonl = "eval_harness.adapters.dataset.jsonl_dataset_adapter:JsonlDatasetAdapter"
+yaml    = "eval_harness.adapters.dataset.yaml_dataset_adapter:YamlDatasetAdapter"
+jsonl   = "eval_harness.adapters.dataset.jsonl_dataset_adapter:JsonlDatasetAdapter"
+fixture = "eval_harness.adapters.dataset.fixture_dataset_adapter:FixtureDatasetAdapter"
 
 [project.entry-points."eval_harness.trace_stores"]
 local_files = "eval_harness.adapters.trace.local_files_store:LocalFilesStore"
