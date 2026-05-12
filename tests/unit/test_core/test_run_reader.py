@@ -93,7 +93,7 @@ def test_missing_required_file_raises_config_error(tmp_path: Path) -> None:
     (run_dir / "summary.yaml").write_text("run_id: r1\n")
     (run_dir / "traces.jsonl").write_text("")
     # results.jsonl deliberately omitted
-    with pytest.raises(ConfigError, match="results.jsonl"):
+    with pytest.raises(ConfigError, match=r"results\.jsonl"):
         RunReader(run_dir)
 
 
@@ -124,7 +124,7 @@ async def test_corrupt_jsonl_raises_config_error_with_line_number(
         f.write("{not-json\n")
 
     reader = RunReader(run_dir)
-    with pytest.raises(ConfigError, match="traces.jsonl:2"):
+    with pytest.raises(ConfigError, match=r"traces\.jsonl:2"):
         async for _ in reader.iter_traces():
             pass
 
