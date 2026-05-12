@@ -64,6 +64,9 @@ helicone = []
 # SDK is deferred to construction time so callers without the extra can
 # still load the module.
 braintrust = ["braintrust>=0.0.50,<1"]
+# `webhook` TraceStore: Slack + Discord use plain httpx (in core); only
+# Linear needs an SDK for createComment via GraphQL.
+webhook  = ["linear-api>=0.2,<1"]
 git      = ["pygit2>=1.15"]
 docker   = ["docker>=7"]
 otel     = ["opentelemetry-sdk>=1.27", "opentelemetry-exporter-otlp>=1.27"]
@@ -82,6 +85,7 @@ all = [
   "arize-phoenix-otel>=0.6,<1 ; python_version < '3.15'",
   "arize-otel>=0.7,<1 ; python_version < '3.15'",
   "braintrust>=0.0.50,<1",
+  "linear-api>=0.2,<1",
   "pygit2>=1.15",
   "docker>=7",
   "opentelemetry-sdk>=1.27",
@@ -145,6 +149,7 @@ langfuse    = "eval_harness.adapters.trace.langfuse_trace_store:LangfuseTraceSto
 phoenix     = "eval_harness.adapters.trace.phoenix_trace_store:PhoenixTraceStore"
 arize       = "eval_harness.adapters.trace.arize_trace_store:ArizeTraceStore"
 braintrust  = "eval_harness.adapters.trace.braintrust_trace_store:BraintrustTraceStore"
+webhook     = "eval_harness.adapters.trace.webhook_trace_store:WebhookTraceStore"
 
 [project.entry-points."eval_harness.workspaces"]
 tempdir_snapshot = "eval_harness.adapters.workspace.tempdir_snapshot_adapter:TempdirSnapshotAdapter"
