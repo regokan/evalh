@@ -43,7 +43,7 @@ jobs:
         # cleanly when the backend isn't built.
         run: |
           uv sync --extra anthropic --extra sqlite --extra git --no-dev
-          uv pip install pytest pytest-asyncio pytest-cov respx mypy types-PyYAML
+          uv pip install pytest pytest-asyncio pytest-cov respx ruff mypy types-PyYAML
 
       - name: ruff check
         run: uv run --no-sync ruff check .
