@@ -95,6 +95,9 @@ thinking_tokens_under  = "eval_harness.evaluators.thinking_tokens_under:Thinking
 thinking_present       = "eval_harness.evaluators.thinking_present:ThinkingPresentEvaluator"
 thinking_does_not_leak = "eval_harness.evaluators.thinking_does_not_leak:ThinkingDoesNotLeakEvaluator"
 semantic_similarity    = "eval_harness.evaluators.semantic_similarity:SemanticSimilarityEvaluator"
+latency_first_token_under = "eval_harness.evaluators.latency_first_token_under:LatencyFirstTokenUnderEvaluator"
+tokens_per_second_above   = "eval_harness.evaluators.tokens_per_second_above:TokensPerSecondAboveEvaluator"
+stream_completed          = "eval_harness.evaluators.stream_completed:StreamCompletedEvaluator"
 
 [project.entry-points."eval_harness.embedders"]
 "openai-text-embedding-3-small"           = "eval_harness.evaluators._embedders.openai:OpenAIEmbedder"
