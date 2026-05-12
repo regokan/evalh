@@ -121,6 +121,11 @@ claude = "eval_harness.core.llm_backends.anthropic:AnthropicLlmBackend"
 # discovered at runtime for third-party plugins; their backends are wrapped to
 # the `LlmBackend` interface. New code registers under `eval_harness.llm_backends`.
 
+# Sixth adapter family — TraceEnricher. Built-ins ship empty for the
+# foundation bead; the v1-supplement OTel / Langfuse / Phoenix beads
+# register their concrete enrichers here.
+[project.entry-points."eval_harness.trace_enrichers"]
+
 [project.urls]
 Homepage = "https://github.com/regokan/evalh"
 Issues   = "https://github.com/regokan/evalh/issues"

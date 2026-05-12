@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import random
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -13,12 +13,14 @@ from eval_harness.core.time import make_run_id
 from eval_harness.factories.dataset_adapter_factory import DatasetAdapterFactory
 from eval_harness.factories.evaluator_factory import EvaluatorFactory
 from eval_harness.factories.system_adapter_factory import SystemAdapterFactory
+from eval_harness.factories.trace_enricher_factory import TraceEnricherFactory
 from eval_harness.factories.trace_store_factory import TraceStoreFactory
 from eval_harness.factories.workspace_factory import WorkspaceFactory
 
-_STRUCTURAL_KEYS = frozenset({"name", "adapter", "metadata"})
+_STRUCTURAL_KEYS = frozenset({"name", "adapter", "metadata", "enrich_trace_from"})
 
 if TYPE_CHECKING:
+    from eval_harness.adapters.enricher.base import TraceEnricher
     from eval_harness.adapters.system.base import SystemAdapter
     from eval_harness.adapters.trace.base import TraceStore
     from eval_harness.adapters.workspace.base import WorkspaceAdapter
@@ -39,6 +41,10 @@ class RunPlan:
     retry_policy: RetryPolicy
     baseline_variant: str | None
     price_table: PriceTable | None = None
+    # Per-variant TraceEnricher chains. Empty list = no enrichment. Order
+    # matters: the runner runs them in this order between SystemAdapter and
+    # evaluators.
+    enrichers: dict[str, list[TraceEnricher]] = field(default_factory=dict)
     # Optional whitelist of `(case_id, variant_name)` cells. When set, run_eval
     # executes only these specific cells (instead of the full cases x variants
     # product). Used by `evalh run --retry-only-failed` to amend an existing
@@ -53,6 +59,7 @@ class Factories:
     evaluator: EvaluatorFactory
     workspace: WorkspaceFactory
     trace_store: TraceStoreFactory
+    trace_enricher: TraceEnricherFactory
 
 
 def _default_factories() -> Factories:
@@ -62,12 +69,14 @@ def _default_factories() -> Factories:
         evaluator=EvaluatorFactory(),
         workspace=WorkspaceFactory(),
         trace_store=TraceStoreFactory(),
+        trace_enricher=TraceEnricherFactory(),
     )
     f.dataset.load_entry_points()
     f.system.load_entry_points()
     f.evaluator.load_entry_points()
     f.workspace.load_entry_points()
     f.trace_store.load_entry_points()
+    f.trace_enricher.load_entry_points()
     return f
 
 
@@ -93,6 +102,7 @@ async def build_plan(
 
     variants: list[RunVariant] = []
     system_adapters: dict[str, SystemAdapter] = {}
+    enrichers: dict[str, list[TraceEnricher]] = {}
     for sys_cfg in config.systems:
         variant_config = _system_extras(sys_cfg)
         variant = RunVariant(
@@ -103,6 +113,9 @@ async def build_plan(
         )
         variants.append(variant)
         system_adapters[variant.name] = facs.system.build(variant)
+        enrichers[variant.name] = [
+            facs.trace_enricher.build(spec) for spec in sys_cfg.enrich_trace_from
+        ]
 
     trace_store = facs.trace_store.build(output_cfg.model_dump())
     if hasattr(trace_store, "rendered_config"):
@@ -137,6 +150,7 @@ async def build_plan(
         retry_policy=config.run.retry,
         baseline_variant=baseline,
         price_table=price_table,
+        enrichers=enrichers,
     )
 
 

@@ -27,6 +27,7 @@ from eval_harness.runner.summary import SummaryAggregator
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
+    from eval_harness.adapters.enricher.base import TraceEnricher
     from eval_harness.adapters.workspace.base import Workspace
     from eval_harness.evaluators.base import Evaluator
     from eval_harness.runner.plan_builder import RunPlan
@@ -53,6 +54,9 @@ async def run_eval(plan: RunPlan) -> RunSummary:
         await stack.enter_async_context(plan.trace_store)
         for adapter in plan.system_adapters.values():
             await stack.enter_async_context(adapter)
+        for chain in plan.enrichers.values():
+            for enricher in chain:
+                await stack.enter_async_context(enricher)
         if plan.workspace is not None and hasattr(plan.workspace, "__aenter__"):
             await stack.enter_async_context(plan.workspace)  # type: ignore[arg-type]
 
@@ -99,6 +103,34 @@ async def run_eval(plan: RunPlan) -> RunSummary:
         return summary
 
     raise RuntimeError("unreachable: AsyncExitStack never re-raises")
+
+
+async def _run_enrichers(
+    trace: Trace,
+    enrichers: list[TraceEnricher],
+) -> Trace:
+    """Dispatch the variant's enricher chain. Failure-soft: an enricher that
+    raises does NOT abort the cell — the runner records the failure on
+    ``trace.extra.enrichment_errors`` and proceeds with the un-enriched
+    trace from that point in the chain. See
+    ``docs/Adapters.md`` > TraceEnricher."""
+    for enricher in enrichers:
+        try:
+            trace = await enricher.enrich(trace)
+        except Exception as exc:
+            errors = trace.extra.setdefault("enrichment_errors", [])
+            errors.append(
+                {
+                    "enricher": getattr(enricher, "name", type(enricher).__name__),
+                    "error": f"{type(exc).__name__}: {exc}",
+                }
+            )
+            logger.debug(
+                "enricher %r failed (failure-soft): %s",
+                getattr(enricher, "name", type(enricher).__name__),
+                exc,
+            )
+    return trace
 
 
 def _build_variant_model_index(variants: list[RunVariant]) -> dict[str, str]:
@@ -227,6 +259,8 @@ async def _run_one(case: EvalCase, variant: RunVariant, plan: RunPlan) -> CellOu
         finished_at = utc_now()
 
         _enforce_invariants(trace, plan.run_id, case, variant, started_at, finished_at)
+
+        trace = await _run_enrichers(trace, plan.enrichers.get(variant.name, []))
 
         await plan.trace_store.save_trace(trace)
 

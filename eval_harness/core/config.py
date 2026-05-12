@@ -30,6 +30,7 @@ class SystemConfig(BaseModel):
     adapter: str
     metadata: dict[str, Any] = Field(default_factory=dict)
     timeout_seconds: int = 120
+    enrich_trace_from: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class WorkspaceConfig(BaseModel):
