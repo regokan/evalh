@@ -173,6 +173,16 @@ Use all three together: per-judge limit catches one bad case; per-run limit catc
 
 ---
 
+## CI integration
+
+A reference GitHub Actions workflow ships at
+[`templates/eval.yml`](../templates/eval.yml). It runs the eval on the PR head
+and on `main`, then posts a sticky PR comment with per-variant pass rate and
+delta vs `main`. The full recipe — wiring, secrets, caching `main` runs, and
+cost considerations — lives in [CI.md](CI.md).
+
+---
+
 ## Running multiple evals in parallel
 
 Each `evalh run` is its own process. To run several at once, just launch several shells:

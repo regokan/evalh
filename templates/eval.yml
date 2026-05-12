@@ -1,0 +1,173 @@
+# Reference GitHub Actions workflow for eval-harness.
+#
+# Copy this file into your repo at .github/workflows/eval.yml and adapt the
+# bits marked TODO. The shape is intentionally simple: run the eval on the PR
+# head, run it again on main, post a markdown comment summarising the delta.
+#
+# Prerequisites in your repo's Settings -> Secrets and variables -> Actions:
+#   - ANTHROPIC_API_KEY        (if your judge / system uses Anthropic)
+#   - AGENT_API_KEY            (if your system_under_test is an authenticated HTTP service)
+#   - Optionally OPENAI_API_KEY, etc., per your eval.yaml's `${VAR}` placeholders.
+#
+# The workflow posts a single sticky PR comment marked with the HTML sentinel
+# `<!-- evalh-summary -->`. Re-runs on the same PR update that comment in place
+# instead of stacking new comments.
+#
+# Read docs/CI.md for the recipe walk-through and tuning knobs.
+
+name: eval-harness
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  pull-requests: write
+  contents: read
+
+concurrency:
+  group: evalh-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  eval:
+    runs-on: ubuntu-latest
+    env:
+      # TODO: point at the eval config you want CI to run.
+      EVAL_CONFIG: evals/configs/listing_price.yaml
+      # Where each `evalh run` parks its output.
+      RUNS_DIR: evals/runs
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      AGENT_API_KEY: ${{ secrets.AGENT_API_KEY }}
+
+    steps:
+      - name: Checkout PR head
+        uses: actions/checkout@v4
+        with:
+          path: pr
+
+      - name: Checkout main (baseline)
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          path: base
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install eval-harness (PR)
+        working-directory: pr
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[anthropic]"
+
+      - name: Install eval-harness (baseline)
+        working-directory: base
+        run: pip install -e ".[anthropic]"
+
+      - name: Run eval on PR head
+        id: pr_run
+        working-directory: pr
+        run: |
+          evalh run "$EVAL_CONFIG"
+          run_dir=$(ls -dt "$RUNS_DIR"/*/ | head -n 1)
+          echo "run_dir=${PWD}/${run_dir%/}" >> "$GITHUB_OUTPUT"
+
+      - name: Run eval on main (baseline)
+        id: base_run
+        working-directory: base
+        run: |
+          evalh run "$EVAL_CONFIG"
+          run_dir=$(ls -dt "$RUNS_DIR"/*/ | head -n 1)
+          echo "run_dir=${PWD}/${run_dir%/}" >> "$GITHUB_OUTPUT"
+
+      - name: Build PR-comment body
+        id: build_body
+        env:
+          PR_RUN_DIR: ${{ steps.pr_run.outputs.run_dir }}
+          BASE_RUN_DIR: ${{ steps.base_run.outputs.run_dir }}
+        run: |
+          python - <<'PY' > /tmp/body.md
+          import os
+          from pathlib import Path
+          import yaml
+          from eval_harness.core.models import RunSummary
+
+          pr_dir = Path(os.environ["PR_RUN_DIR"])
+          base_dir = Path(os.environ["BASE_RUN_DIR"])
+          pr = RunSummary.model_validate(yaml.safe_load((pr_dir / "summary.yaml").read_text()))
+          base = RunSummary.model_validate(yaml.safe_load((base_dir / "summary.yaml").read_text()))
+
+          base_rates = {v.name: v.pass_rate for v in base.variants}
+
+          out = []
+          out.append("<!-- evalh-summary -->")
+          out.append("## eval-harness")
+          out.append("")
+          out.append(f"Config: `{pr.config_path}` (PR `{pr.config_hash[:8]}` vs main `{base.config_hash[:8]}`)")
+          out.append("")
+          out.append("| variant | PR pass rate | main pass rate | Δ |")
+          out.append("|---|---|---|---|")
+          for v in pr.variants:
+              base_rate = base_rates.get(v.name)
+              if base_rate is None:
+                  delta = "—"
+              else:
+                  delta = f"{(v.pass_rate - base_rate) * 100:+.1f}pp"
+              base_str = "—" if base_rate is None else f"{base_rate * 100:.1f}%"
+              out.append(
+                  f"| `{v.name}` | {v.pass_rate * 100:.1f}% "
+                  f"({v.cases_passed}/{v.cases_total}) | {base_str} | {delta} |"
+              )
+
+          if pr.comparison is not None and pr.comparison.deltas:
+              out.append("")
+              out.append("### Per-case regressions / improvements (vs run-internal baseline)")
+              for d in pr.comparison.deltas:
+                  out.append(
+                      f"- `{d.variant}`: {len(d.regressions)} regressions, "
+                      f"{len(d.improvements)} improvements"
+                  )
+
+          out.append("")
+          out.append(
+              f"_Run dir (PR): `{pr_dir.name}`_   "
+              f"_Run dir (main): `{base_dir.name}`_"
+          )
+          print("\n".join(out))
+          PY
+          echo "body_path=/tmp/body.md" >> "$GITHUB_OUTPUT"
+
+      - name: Post / update PR comment
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+          BODY_PATH: ${{ steps.build_body.outputs.body_path }}
+        run: |
+          set -euo pipefail
+          existing_id=$(
+            gh api "repos/${REPO}/issues/${PR}/comments" --paginate \
+              --jq '.[] | select(.body | startswith("<!-- evalh-summary -->")) | .id' \
+            | head -n 1
+          )
+          if [[ -n "${existing_id}" ]]; then
+            gh api --method PATCH \
+              "repos/${REPO}/issues/comments/${existing_id}" \
+              -F body=@"${BODY_PATH}" >/dev/null
+          else
+            gh pr comment "${PR}" --repo "${REPO}" --body-file "${BODY_PATH}"
+          fi
+
+      - name: Upload run artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: evalh-runs-${{ github.event.pull_request.number }}
+          path: |
+            pr/${{ env.RUNS_DIR }}
+            base/${{ env.RUNS_DIR }}
+          retention-days: 14
