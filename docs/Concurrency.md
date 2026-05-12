@@ -324,7 +324,15 @@ What works through v1:
 
 - One process, one event loop, `max_concurrency` ≤ 32. Trace store is `local_files` (append-only JSONL — fast on write, OK on read).
 - Memory grows with in-flight cells, not with total cases. The runner holds the matrix index, the semaphore, and the open adapter pool — not the traces themselves (those flush to disk on completion).
-- `summary.yaml` aggregation streams through `traces.jsonl` / `results.jsonl`; doesn't load everything in memory.
+- `summary.yaml` aggregation streams: each cell's `CellOutcome` feeds a fixed-size `SummaryAggregator` (per-variant + per-evaluator counters and sums) and is then dropped. The runner does **not** keep a `list[CellOutcome]` across the run. The only per-case state retained is `case_pass_by_variant: dict[variant, dict[case_id, bool]]` for the comparison report — one bool per cell, tens of KB even at 10K cases.
+
+The 10K-case streaming guard lives in `tests/perf/test_10k_case_run.py` and is marked `@pytest.mark.perf`. CI excludes it via `-m "not perf"`; run it on demand:
+
+```bash
+pytest -m perf tests/perf/
+```
+
+The test synthesises 10K cases against a trivial stub adapter and asserts peak `tracemalloc` memory stays under 1 GB and wall time under 30 s. The budget is loose — the assertions catch regressions like reintroducing a buffered `list[CellOutcome]`, not subtle slowdowns.
 
 What breaks past ~50K cases per run:
 
