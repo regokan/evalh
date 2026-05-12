@@ -7,6 +7,7 @@ build a store instance via the ``_STORE_BUILDERS`` table at the top.
 """
 from __future__ import annotations
 
+import os
 from collections.abc import AsyncIterator, Callable
 from datetime import UTC, datetime
 from pathlib import Path
@@ -41,10 +42,32 @@ def _build_sqlite(tmp_path: Path) -> TraceStore:
     return SqliteStore(path=str(tmp_path / "store.db"))  # type: ignore[return-value]
 
 
+def _build_postgres(tmp_path: Path) -> TraceStore:
+    # Each test gets its own schema so concurrent runs don't collide on the
+    # eval_runs primary key. asyncpg is required; without it the import is
+    # caught by the param-skip filter below.
+    from eval_harness.adapters.trace.postgres_store import PostgresStore
+
+    dsn = os.environ["EVALH_TEST_POSTGRES_DSN"]
+    schema = f"test_evalh_{abs(hash(str(tmp_path))) % 10_000_000:07d}"
+    return PostgresStore(dsn=dsn, schema=schema)  # type: ignore[return-value]
+
+
 _STORE_BUILDERS: list[tuple[str, Callable[[Path], TraceStore]]] = [
     ("local_files", _build_local_files),
     ("sqlite", _build_sqlite),
 ]
+
+# Plug postgres in only when an ephemeral instance is reachable. Set
+# `EVALH_TEST_POSTGRES_DSN=postgres://...` in the test env to enable. CI / dev
+# without postgres skip the param entirely — no failures, no flakes.
+if os.environ.get("EVALH_TEST_POSTGRES_DSN"):
+    try:
+        import asyncpg  # noqa: F401
+
+        _STORE_BUILDERS.append(("postgres", _build_postgres))
+    except ImportError:
+        pass
 
 
 @pytest.fixture(params=_STORE_BUILDERS, ids=lambda b: b[0])
