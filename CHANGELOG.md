@@ -4,6 +4,56 @@ All notable changes to this project are recorded here. Schema: per-release
 sections in reverse chronological order. v0.x lines map 1:1 to the spec
 in [`docs/Roadmap.md`](docs/Roadmap.md).
 
+## v0.2 — 2026-05-12
+
+**Backends & streaming**
+
+- `postgres` TraceStore — `asyncpg` + JSONB payloads + server-side cursors
+  so 100K-case runs stream rather than materialise. Behind the
+  `[postgres]` extra.
+- TraceStore Protocol gained four read methods (`iter_traces`,
+  `iter_results`, `load_summary`, `list_run_ids`) so `local_files`,
+  `sqlite`, and `postgres` are interchangeable for downstream tooling.
+- `run_namespace: dict[str, str]` — config-level metadata for multi-tenant
+  filtering. `local_files` ignores; `sqlite` stores it as a JSON column;
+  `postgres` indexes on it. Additive — no `schema_version` bump.
+
+**Runner**
+
+- `run.cost_limit_usd` — soft run-level cost guardrail. After each cell,
+  the accumulator sums `trace.metrics.cost_usd`; once the total reaches
+  the limit, queued cells short-circuit with a `cost_limit`-typed Trace.
+  In-flight cells finish naturally. Composes with the existing
+  per-evaluator `cost_limit_usd` rather than replacing it.
+- Streaming summary aggregation — `SummaryAggregator` consumes
+  `CellOutcome`s in a single pass with fixed-size counters per variant +
+  per (evaluator, variant), so summary memory no longer scales with case
+  count.
+
+**CLI**
+
+- `evalh run --retry-only-failed RUN_DIR` reuses an existing `run_dir` /
+  `run_id` and re-executes only the cells whose Trace recorded an error;
+  `--include-evaluator-failures` widens the retry set to cells that ran
+  successfully but had at least one failing or erroring evaluator.
+
+**CI**
+
+- `.github/workflows/ci.yml` — ruff + mypy --strict + pytest matrix
+  (Python 3.11 / 3.12 / 3.13) on push/PR via pinned `uv`. Concurrency
+  group cancels superseded runs.
+- `.github/workflows/smoke.yml` — `workflow_dispatch`-only smoke against
+  real Anthropic, uploads the run directory as an artifact.
+- `templates/eval.yml` — reference recipe for consumers; cross-linked
+  from `docs/CI.md`.
+
+**Performance**
+
+- `tests/perf/test_10k_case_run.py` — `@pytest.mark.perf`-gated guard
+  that runs 10K cases x 3 variants through the streaming aggregator and
+  asserts the wall-clock and memory budget. CI runs `-m "not perf"` by
+  default; opt-in with `pytest -m perf tests/perf/`.
+
 ## v0.1 — 2026-05-12
 
 **Adapters & stores**

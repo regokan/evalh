@@ -1,5 +1,7 @@
 # Eval Harness
 
+[![CI](https://github.com/regokan/evalh/actions/workflows/ci.yml/badge.svg)](https://github.com/regokan/evalh/actions/workflows/ci.yml)
+
 > A boring, config-driven harness for evaluating AI systems.
 > One YAML drives the run. The runner is dumb. The trace is the source of truth.
 
