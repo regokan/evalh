@@ -4,6 +4,85 @@ All notable changes to this project are recorded here. Schema: per-release
 sections in reverse chronological order. v0.x lines map 1:1 to the spec
 in [`docs/Roadmap.md`](docs/Roadmap.md).
 
+## v2 — 2026-05-12
+
+**"Distributed."** The unit of distribution is a cell. The runner
+becomes a coordinator.
+
+**Executor Protocol + cells**
+
+- `eval_harness.core.executors.base.Executor` Protocol: `open(plan)` →
+  `bind_cells(...)` → `dispatch_all(cells)` → `finalize()` → `close()`.
+  The runner only ever calls the Protocol; no `isinstance` branching
+  on executor type lives there.
+- `CellDescriptor` carries per-cell config (variant, case, eval_config
+  dict, optional pool / workspace kind). Deterministic `cell_id` via
+  `compute_cell_id(...)` — same inputs across machines hash to the same
+  id, which is what the trace-store idempotency check leans on.
+- Trace stores ship `save_trace_idempotent(trace, cell_id) -> bool`.
+  Three canonical sinks enforce: `local_files` (sidecar marker),
+  `sqlite` (`cell_id TEXT` column + `error_type` guard on UPSERT),
+  `postgres` (indexed `cell_id` + `ON CONFLICT WHERE existing.error_type
+  IS NOT NULL`). Other stores inherit the always-write fallback.
+
+**Local executor (default)**
+
+- `eval_harness.core.executors.local.LocalExecutor`: wraps the v1.x
+  `asyncio.gather` + `asyncio.Semaphore` hot path under the Protocol.
+  Default `run.executor.type` is `local` — no breaking config change.
+- **Capacity pools**: `run.executor.config.pools = {name: int}` declares
+  named pools; `systems[].pool` routes a variant to one. Absent routing
+  falls back to per-variant / global semaphores.
+- 10K-case perf gate (`tests/perf/test_local_executor_perf.py`) asserts
+  wall-time stays within 5% of the pre-v2 baseline captured in
+  `tests/perf/baselines/local_executor_10k.json`.
+
+**ObjectStorage**
+
+- `eval_harness.core.object_storage.fsspec_storage.FsspecObjectStorage`:
+  one class behind `file://`, `s3://`, `gs://`, `az://`, `memory://`.
+  Cloud backends ship as extras (`[s3]`, `[gcs]`, `[azure]`).
+- Registry under `eval_harness.object_storages`; default builder roots
+  at `runs/<run_id>/artifacts/` for the local-only path.
+
+**Distributed executors**
+
+- `ray` — each cell becomes a `ray.remote` task. In-process mode for the
+  integration test (`@pytest.mark.ray`); real cluster runs are the
+  manual benchmark.
+- `modal` — each cell becomes a `modal.Function` call. Cloud-only;
+  smoke gated on `MODAL_TOKEN_ID` + `~/.modal.toml`.
+- `celery` — each cell becomes a Celery task. Redis broker by default;
+  CI integration test gated on `EVALH_TEST_REDIS_URL`.
+- `kubernetes` — each cell becomes a `batch/v1` Job whose pod runs the
+  new `evalh-cell-worker` console-script. Payload routing: env var for
+  ≤ 32 KiB, ConfigMap fallback above. Result piping through
+  ObjectStorage (`cells/<cell_id>/outcome.json`). Smoke gated on
+  `EVALH_TEST_K8S_CONTEXT` + `kubectl get pods`.
+- Distributed executors emit a one-shot warning at `open()` when paired
+  with the single-writer `local_files` store. See
+  `docs/Adapters.md > Trace store concurrency safety`.
+
+**Retry across executors**
+
+- `--retry-only-failed` now picks up cells that have NO Trace at all
+  (worker-crashed-mid-cell), not just `Trace.error` rows. The retry
+  path widens its scan to the plan's expected `(case, variant)` set
+  and includes cells absent from `traces.jsonl`.
+
+**Docs + benchmarks**
+
+- `docs/Executors.md` — Protocol, cell idempotency, deployment recipes
+  for all four distributed executors.
+- `docs/Adapters.md > Trace store concurrency safety` — per-store
+  table covering which executor / store combos are safe.
+- `docs/CI.md > Distributed executors in CI` — which markers CI runs
+  (Ray, Celery + Redis service) and how to run the others locally
+  (Modal, Kubernetes).
+- `benchmarks/distributed_1m.py` + `benchmarks/README.md` — maintainer
+  script for the 1M-case-against-200-worker-Ray-cluster aspirational
+  target. Not a CI gate.
+
 ## v1.x — 2026-05-12
 
 **"It plugs into the rest of the ecosystem."** Drift detection,

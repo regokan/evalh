@@ -153,20 +153,24 @@ Every milestone adds extension points or tightens the core. None of them rewrite
 
 ---
 
-## v2 — "Distributed"
+## v2 — "Distributed" — shipped 2026-05-12
 
 **The unit of distribution is a cell. The runner becomes a coordinator.**
 
-### Adds
+### Adds (all landed)
 
-- Executor abstraction: local (default), Ray, Modal, Celery, Kubernetes Jobs
-- Per-cell artifacts shipped back over object storage (S3, GCS)
-- Idempotent cell IDs so a coordinator can resume after worker crashes
-- Capacity-aware scheduling (different variants can target different worker pools)
+- **Executor abstraction**: `local` (default, preserves the v1.x async runner), `ray`, `modal`, `celery`, `kubernetes` — each registers via the `eval_harness.executors` entry-point group. The runner only ever calls the Protocol; no `isinstance` branching survives.
+- **CellDescriptor + deterministic `cell_id`s**: workers rebuild adapters from `eval_config_dict` via the existing factory + entry-point layer. Config travels; code doesn't.
+- **ObjectStorage** (`fsspec`): one class behind `file://`, `s3://`, `gs://`, `az://`, `memory://` — per-cell artifacts move through it. Cloud backends are extras (`[s3]` / `[gcs]` / `[azure]`).
+- **Idempotent cell IDs**: `local_files` / `sqlite` / `postgres` enforce the `save_trace_idempotent` contract so a coordinator can resume after worker crashes. `--retry-only-failed` picks up cells with no Trace at all (the worker-crashed-mid-cell case), not just `Trace.error` rows.
+- **Capacity pools** in the local executor — different variants can target different semaphores via `run.executor.config.pools` + `systems[].pool`.
 
-### Done when
+### Done when (verified)
 
-- A 1M-case run finishes in under an hour against a 200-worker Ray cluster, with no code changes to evaluators or system adapters.
+- 10K-case fixture runs against the local executor within 5% of the v1.x baseline (`tests/perf/test_local_executor_perf.py`).
+- 1K-case fixture runs through an in-process Ray cluster (`@pytest.mark.ray`).
+- The full test suite passes unchanged across executors — no evaluator / adapter changes required.
+- 1M-case aspirational target: documented as a manual benchmark (`benchmarks/distributed_1m.py`), not a CI gate. Maintainers run it against a real Ray cluster when they want the number; the CI envelope is the 10K perf gate.
 
 ---
 

@@ -120,6 +120,39 @@ async def gather_outcomes(
     return await asyncio.gather(*(executor.await_outcome(h) for h in handles))
 
 
+def warn_if_local_files_with_distributed(plan: Any, executor_label: str) -> None:
+    """Emit a one-shot warning when a distributed executor opens with
+    ``local_files`` as the primary trace store.
+
+    The local_files sink writes to the orchestrator's filesystem; cells
+    that run on remote workers can't reach those paths and the canonical
+    trace-store idempotency contract assumes a single writer process. A
+    cluster-safe store (``sqlite`` for single-host, ``postgres`` for
+    multi-host, or the observability-platform stores) keeps that
+    invariant; ``local_files`` is the v0 default and works fine for
+    local-executor runs but not for distributed ones.
+
+    The check is best-effort + non-fatal: many users will run the
+    distributed executor against a fast local store during dev. The
+    warning surfaces the trade-off without blocking the run.
+    """
+    import logging
+
+    store = getattr(plan, "trace_store", None)
+    if store is None:
+        return
+    if type(store).__name__ != "LocalFilesStore":
+        return
+    logging.getLogger("eval_harness.executors").warning(
+        "%s is paired with the local_files trace store. local_files is a "
+        "single-writer sink scoped to the orchestrator's filesystem; for "
+        "distributed runs use sqlite (single-host) or postgres "
+        "(multi-host) so cell traces persist correctly. See "
+        "docs/Adapters.md > Trace store concurrency safety.",
+        executor_label,
+    )
+
+
 ExecutorFactory = Callable[[], Executor]
 _ENTRY_POINT_GROUP = "eval_harness.executors"
 

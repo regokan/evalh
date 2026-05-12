@@ -26,7 +26,10 @@ from typing import TYPE_CHECKING, Any, Self, cast
 
 from eval_harness.core.errors import ConfigError
 from eval_harness.core.executors._worker import worker_run_cell_sync
-from eval_harness.core.executors.base import gather_outcomes
+from eval_harness.core.executors.base import (
+    gather_outcomes,
+    warn_if_local_files_with_distributed,
+)
 from eval_harness.core.models import (
     CellDescriptor,
     EvalCase,
@@ -132,6 +135,7 @@ class CeleryExecutor:
         run so broker / result-backend URLs come straight from
         eval.yaml. Workers boot independently against the same broker;
         this side never spawns workers."""
+        warn_if_local_files_with_distributed(plan, "celery executor")
         self._plan = plan
         self._accumulator = CostAccumulator()
         self._aggregator = SummaryAggregator(plan=plan)

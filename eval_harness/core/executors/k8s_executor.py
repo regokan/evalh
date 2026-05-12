@@ -32,6 +32,7 @@ from types import TracebackType
 from typing import TYPE_CHECKING, Any, Self
 
 from eval_harness.core.errors import ConfigError
+from eval_harness.core.executors.base import warn_if_local_files_with_distributed
 from eval_harness.core.models import (
     CellDescriptor,
     EvalCase,
@@ -187,6 +188,7 @@ class KubernetesJobsExecutor:
         """Build per-run state. Loads kube config (in-cluster first,
         local kubeconfig fallback) and opens the ObjectStorage we'll
         read outcomes from."""
+        warn_if_local_files_with_distributed(plan, "kubernetes executor")
         self._plan = plan
         self._accumulator = CostAccumulator()
         self._aggregator = SummaryAggregator(plan=plan)

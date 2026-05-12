@@ -77,6 +77,52 @@ jobs:
             uv run --no-sync pytest tests/ -q -m "not perf and not docker and not s3 and not modal and not celery"
           fi
 
+  distributed:
+    # Distributed-executor markers that CAN run in CI: Ray (in-process
+    # mode, no cluster) and Celery (against a Redis service container).
+    # Modal needs a configured Modal account and Kubernetes needs a real
+    # cluster; both are documented in docs/CI.md for local-run.
+    name: distributed executors (ray + celery)
+    runs-on: ubuntu-latest
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        # Health-check so subsequent steps don't race the broker boot.
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      # The CeleryExecutor tests gate on this — set it once, here, so the
+      # @pytest.mark.celery suite picks Redis up; absence skips cleanly
+      # everywhere else.
+      EVALH_TEST_REDIS_URL: redis://localhost:6379/0
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+
+      - name: Set up Python 3.11
+        run: uv python install 3.11
+
+      - name: Install eval-harness with distributed extras
+        # Ray + Celery are the two extras with viable CI smokes. Modal +
+        # Kubernetes need cloud / cluster access (docs/CI.md covers the
+        # local-run recipes).
+        run: |
+          uv sync --extra anthropic --extra sqlite --extra ray --extra celery --no-dev
+          uv pip install pytest pytest-asyncio pytest-cov respx ruff mypy types-PyYAML
+
+      - name: pytest -m "ray or celery"
+        run: uv run --no-sync pytest tests/ -q -m "ray or celery"
+
   typecheck:
     name: mypy --strict (py3.11)
     runs-on: ubuntu-latest

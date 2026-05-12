@@ -113,6 +113,9 @@ On macOS we can diff a workspace without git: snapshot the directory before the 
 ### 8. Platforms are sources, sinks, and enrichers — never the source of truth
 Langfuse, Phoenix, Arize, and OTel-compatible backends plug in as `DatasetAdapter`s (pull production traffic as cases), `TraceStore`s (mirror our traces to their UI), and `TraceEnricher`s (fetch their rich upstream trace and merge into ours). The local `runs/<run_id>/traces.jsonl` stays canonical; remote sinks are mirrors. See [Observability.md](docs/Observability.md).
 
+### 9. The unit of distribution is a cell
+v2 makes one cell — one `(case, variant)` pair — the dispatch primitive. The runner builds a `CellDescriptor` per cell and submits it to an `Executor`. Local (default), Ray, Modal, Celery, and Kubernetes Jobs all implement the same Protocol; the runner doesn't know which one carries the cell. Workers rebuild adapters from `eval_config_dict` via the entry-point layer — **config travels, code doesn't.** See [Executors.md](docs/Executors.md).
+
 ---
 
 ## What you write to use it

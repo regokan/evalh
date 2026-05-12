@@ -277,6 +277,53 @@ the webhook sink and rely on GitHub's standard failure notifications.
 
 ---
 
+## Distributed executors in CI
+
+The v2 distributed executors come in four flavours; what CI can run for
+you depends on how reachable each transport's runtime is from a GitHub
+runner.
+
+| Marker | CI? | How |
+|---|---|---|
+| `@pytest.mark.ray` | ✓ | `ray` ships an in-process mode — no cluster needed. The `distributed` job in `ci.yml` installs `[ray]` and runs the marker. |
+| `@pytest.mark.celery` | ✓ | A Redis service container holds the broker; the same job sets `EVALH_TEST_REDIS_URL=redis://localhost:6379/0` and runs the marker. |
+| `@pytest.mark.modal` | ✗ | Modal requires a configured account + CLI token. Run locally — see below. |
+| `@pytest.mark.kubernetes` | ✗ | Needs a real cluster (kind, minikube, or a remote target). Run locally — see below. |
+
+### Modal — local
+
+```bash
+modal token new           # one-time, writes ~/.modal.toml
+poetry install --extras modal
+EVALH_TEST_MODAL=1 poetry run pytest tests/ -m modal
+```
+
+The integration test is shape-only by default — it builds the
+`modal.App` + `modal.Function` without spawning a remote call (cost +
+deployed-app requirements would dominate). For real spawn coverage,
+deploy an app first and adapt the test's `app_name`.
+
+### Kubernetes — local
+
+```bash
+kind create cluster --name evalh        # or `minikube start`
+poetry install --extras kubernetes
+docker build -t local/evalh-worker .    # ENTRYPOINT ["evalh-cell-worker"]
+kind load docker-image local/evalh-worker --name evalh
+export EVALH_TEST_K8S_CONTEXT=kind-evalh
+export EVALH_TEST_K8S_IMAGE=local/evalh-worker
+poetry run pytest tests/ -m kubernetes
+```
+
+The `EVALH_TEST_K8S_CONTEXT` env var is the opt-in switch the test
+gates on — a dev with a stray kubeconfig won't get cluster-touching
+tests they didn't ask for. The image must carry eval-harness + your
+plugin packages; the test's stub agent module is in
+`tests/fixtures/k8s_stub_agent.py` and needs to be importable inside
+the pod (build it into the image or mount it as a volume).
+
+---
+
 ## Where to go next
 
 - [CLI.md](CLI.md) — full command reference for `evalh run` / `inspect` / `compare` / `promote` / `drift`

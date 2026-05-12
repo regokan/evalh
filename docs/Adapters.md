@@ -554,6 +554,21 @@ Three canonical sinks enforce the contract:
 
 Other stores (otel, langfuse, phoenix, arize, braintrust, webhook) inherit the always-write fallback — the idempotency contract lives at the canonical sink (the first entry in `eval.yaml > output:`). Operators who want deduplication in their observability backend configure it there.
 
+### Trace store concurrency safety (v2)
+
+The v2 distributed executors (Modal / Ray / Celery / Kubernetes) move cell execution off the orchestrator process. Each store has different guarantees about whether that's safe:
+
+| Store | Local executor | Distributed executor | Notes |
+|---|---|---|---|
+| `local_files` | ✓ safe | ⚠ single-writer only | Writes to the orchestrator's filesystem. Only the orchestrator process opens the file; remote workers never touch it. Safe in the strict sense, but the run dir lives on one machine — switch sinks for multi-host operators. The distributed executors emit a one-shot warning at `open()` when paired with `local_files`. |
+| `sqlite` | ✓ safe | ⚠ single-host | WAL mode + `cell_id` UPSERT guard make multi-coroutine writes safe within one process. Multi-host needs Postgres. |
+| `postgres` | ✓ safe | ✓ safe | `eval_traces.cell_id` indexed + `ON CONFLICT … WHERE existing.error_type IS NOT NULL`. The recommended canonical sink for distributed runs. |
+| `webhook` | ✓ safe | ✓ safe | Slack / Discord / Linear endpoints are concurrent-write-tolerant; each cell trace is an independent HTTP POST. |
+| `otel` | ✓ safe | ✓ safe | OTel collectors handle concurrent spans by design. |
+| `langfuse` / `phoenix` / `arize` / `braintrust` | ✓ safe | ✓ safe | SDK clients carry their own batching + retry; the sink absorbs concurrent writes. |
+
+The rule: pick a canonical sink that matches your executor's reach. The default `local_files` is right for the v0 path — a developer running everything on one machine. As soon as workers run on a different host, swap the canonical sink to `postgres` (or whichever observability backend you treat as authoritative). The secondary-sink list is unaffected; only the canonical sink owns the idempotency contract.
+
 ---
 
 ## WorkspaceAdapter

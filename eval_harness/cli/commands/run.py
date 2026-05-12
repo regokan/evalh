@@ -103,7 +103,9 @@ async def _retarget_to_failed(
 
     Returns `None` when there are no failed cells to retry.
     """
-    failed = await _collect_failed_cells(retry_run_dir, include_evaluator_failures)
+    failed = await _collect_failed_cells(
+        retry_run_dir, include_evaluator_failures, plan=plan
+    )
     if not failed:
         return None
 
@@ -137,14 +139,33 @@ async def _retarget_to_failed(
 async def _collect_failed_cells(
     run_dir: Path,
     include_evaluator_failures: bool,
+    *,
+    plan: RunPlan | None = None,
 ) -> set[tuple[str, str]]:
+    """Cells the retry path should re-execute.
+
+    Three sources, in order:
+    1. Traces with ``error is not None`` — the cell ran and the system
+       (or its surrounding runner) recorded a failure.
+    2. With ``include_evaluator_failures``: cells whose evaluation
+       results show failures or errors.
+    3. When ``plan`` is provided: cells that the plan expects to exist
+       but that have no Trace in ``traces.jsonl`` at all. Worker crashes
+       in distributed runs land here — the cell was never persisted, so
+       the retry path needs the plan's expected set to find them.
+    """
     from eval_harness.core.run_reader import RunReader
 
     reader = RunReader(run_dir)
     failed: set[tuple[str, str]] = set()
+    seen: set[tuple[str, str]] = set()
     async for trace in reader.iter_traces():
+        seen.add((trace.case_id, trace.variant_name))
         if trace.error is not None:
             failed.add((trace.case_id, trace.variant_name))
+    if plan is not None:
+        expected = {(c.id, v.name) for c in plan.cases for v in plan.variants}
+        failed |= expected - seen
     if include_evaluator_failures:
         async for result in reader.iter_results():
             if (not result.passed) or result.error is not None:
