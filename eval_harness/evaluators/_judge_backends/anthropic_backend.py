@@ -21,6 +21,7 @@ class AnthropicJudgeBackend:
     def __init__(self, model: str) -> None:
         try:
             from anthropic import AsyncAnthropic
+            from anthropic.types import TextBlock
         except ImportError as e:
             raise ConfigError(
                 "llm_judge: anthropic backend requested but the `anthropic` "
@@ -29,6 +30,7 @@ class AnthropicJudgeBackend:
             ) from e
         self.model = model
         self._client = AsyncAnthropic()
+        self._text_block_cls = TextBlock
 
     async def judge(
         self,
@@ -49,7 +51,7 @@ class AnthropicJudgeBackend:
             system=_SYSTEM_PROMPT,
             messages=[{"role": "user", "content": user_content}],
         )
-        text_parts = [b.text for b in resp.content if getattr(b, "type", None) == "text"]
+        text_parts = [b.text for b in resp.content if isinstance(b, self._text_block_cls)]
         raw = "".join(text_parts).strip()
         try:
             data = json.loads(raw)
