@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 import asyncio
-import itertools
 import logging
 from collections.abc import Awaitable, Callable
 from contextlib import AsyncExitStack, suppress
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
+from eval_harness.core.errors import ConfigError
 from eval_harness.core.models import (
     EvalCase,
     EvaluationResult,
@@ -19,11 +19,8 @@ from eval_harness.core.models import (
 from eval_harness.core.price_tables import (
     PriceTable,
     compute_cost,
-    warn_default_table_in_use,
 )
 from eval_harness.core.time import utc_now
-from eval_harness.runner.cost_accumulator import CostAccumulator
-from eval_harness.runner.summary import SummaryAggregator
 
 logger = logging.getLogger(__name__)
 
@@ -105,86 +102,132 @@ class CellOutcome:
 
 
 async def run_eval(plan: RunPlan) -> RunSummary:
-    semaphores = _build_semaphores(plan)
-    accumulator = CostAccumulator()
-    cost_limit = plan.config.run.cost_limit_usd
-    aggregator = SummaryAggregator(plan=plan)
-    if plan.price_table is not None:
-        warn_default_table_in_use(plan.price_table)
-    variant_models = _build_variant_model_index(plan.variants)
-    # Multi-sink output: collected best-effort failures land on
-    # RunSummary.sink_errors at finalize time. See docs/Observability.md.
-    sink_errors: list[dict[str, Any]] = []
+    """v2: dispatch through the configured `Executor`. Default `local`
+    preserves the v1.x behaviour — the LocalExecutor wraps the same
+    `asyncio.gather` + `Semaphore` shape and inherits the streaming
+    aggregator, cost-limit guard, sink-failure isolation, and
+    AsyncExitStack-managed adapter lifecycle."""
+    from eval_harness.core.executors import executor_registry
+    from eval_harness.core.executors.local import LocalExecutor
 
-    async with AsyncExitStack() as stack:
-        await stack.enter_async_context(plan.trace_store)
-        for s in plan.secondary_trace_stores:
-            await _enter_secondary(s, stack, sink_errors)
-        for adapter in plan.system_adapters.values():
-            await stack.enter_async_context(adapter)
-        for chain in plan.enrichers.values():
-            for enricher in chain:
-                await stack.enter_async_context(enricher)
-        if plan.workspace is not None and hasattr(plan.workspace, "__aenter__"):
-            await stack.enter_async_context(plan.workspace)  # type: ignore[arg-type]
+    executor_cfg = plan.config.run.executor
+    executor: Any
+    if executor_cfg.type == "local":
+        # Build the Local executor directly — saves an entry-point lookup
+        # on the hot path and keeps the per-cell overhead floor identical
+        # to the v1.x runner.
+        executor = LocalExecutor(pools=dict(executor_cfg.pools))
+    else:
+        executor_registry.load_entry_points()
+        factory_cls = executor_registry._factories.get(executor_cfg.type)
+        if factory_cls is None:
+            raise ConfigError(
+                f"run.executor.type: no executor registered as "
+                f"{executor_cfg.type!r}. Known: "
+                f"{sorted(executor_registry._factories)}"
+            )
+        executor = factory_cls()
 
-        await plan.trace_store.open(plan.run_id, plan.run_dir)
-        for s in plan.secondary_trace_stores:
-            await _secondary_call(s, "open", sink_errors, s.open, plan.run_id, plan.run_dir)
+    pool_for_variant = _build_pool_index(plan)
 
-        cells = list(itertools.product(plan.cases, plan.variants))
-        if plan.cell_filter is not None:
-            cells = [
-                (c, v) for c, v in cells if (c.id, v.name) in plan.cell_filter
+    async with executor:
+        await executor.open(plan)
+
+        if isinstance(executor, LocalExecutor):
+            # Local fast path — skip CellDescriptor construction entirely
+            # (the local executor reuses live adapters; only distributed
+            # executors need the serialized descriptor to send over the
+            # wire). Preserves v1.x's `asyncio.gather` shape exactly.
+            cases_and_variants = [
+                (case, variant, pool_for_variant.get(variant.name))
+                for case in plan.cases
+                for variant in plan.variants
+                if plan.cell_filter is None
+                or (case.id, variant.name) in plan.cell_filter
             ]
+            await executor.dispatch_all_local(cases_and_variants)
+        else:
+            # Generic Protocol path for distributed executors. Build
+            # CellDescriptors (one per cell) so the worker can rebuild
+            # adapters from `eval_config_dict` + re-validate the case.
+            cells_with_bindings = _build_cell_descriptors(plan, pool_for_variant)
+            executor.bind_cells(cells_with_bindings)
+            handles = [
+                await executor.submit_cell(cell)
+                for cell, _, _ in cells_with_bindings
+            ]
+            await executor.await_all(handles)
 
-        async def run_cell(case: EvalCase, variant: RunVariant) -> None:
-            async with semaphores[variant.name]:
-                # Soft guardrail: check inside the semaphore so still-queued
-                # cells short-circuit instead of dispatching to the adapter.
-                # In-flight cells (already past this check) finish naturally.
-                if accumulator.check_limit(cost_limit):
-                    outcome = await _short_circuit_cost_limit(
-                        case,
-                        variant,
-                        plan,
-                        accumulator.total_usd(),
-                        cost_limit,
-                        sink_errors,
-                    )
-                else:
-                    outcome = await _run_one(case, variant, plan, sink_errors)
-                    _fill_cost_from_price_table(
-                        outcome.trace, variant_models.get(variant.name), plan.price_table
-                    )
-                    accumulator.tally(outcome.trace)
-                # Stream the outcome into the aggregator immediately and let
-                # it fall out of scope. This is the streaming-summary
-                # discipline: the runner's heap stays O(in-flight cells),
-                # never O(total cases).
-                aggregator.add(outcome)
-
-        await asyncio.gather(
-            *[run_cell(c, v) for c, v in cells],
-            return_exceptions=False,
-        )
-
-        summary = aggregator.finalize()
-        # Share the same list — later best-effort save_summary failures on
-        # mirrors append into it and the returned RunSummary reflects them.
-        # (The persisted summary.yaml on the canonical sink necessarily
-        # predates save_summary-stage mirror failures; that asymmetry is
-        # acceptable per docs/Observability.md — local files is canonical.)
-        summary.sink_errors = sink_errors
+        summary: RunSummary = executor.finalize()
         # Canonical save first; if it fails the run is meaningless.
         await plan.trace_store.save_summary(summary)
         for s in plan.secondary_trace_stores:
             await _secondary_call(
-                s, "save_summary", sink_errors, s.save_summary, summary
+                s, "save_summary", summary.sink_errors, s.save_summary, summary
             )
         return summary
 
-    raise RuntimeError("unreachable: AsyncExitStack never re-raises")
+
+def _build_pool_index(plan: RunPlan) -> dict[str, str]:
+    """Map variant name -> declared `pool` (capacity-pool routing). Most
+    variants don't declare one; absent entries fall back to the executor's
+    per-variant semaphore. Reads `systems[].pool` from the SystemConfig."""
+    out: dict[str, str] = {}
+    for sys_cfg in plan.config.systems:
+        if sys_cfg.pool:
+            out[sys_cfg.name] = sys_cfg.pool
+    return out
+
+
+def _build_cell_descriptors(
+    plan: RunPlan, pool_for_variant: dict[str, str]
+) -> list[tuple[Any, EvalCase, RunVariant]]:
+    """Build full `CellDescriptor` instances for the generic Protocol
+    path. The local executor takes a faster route — see
+    `LocalExecutor.dispatch_all_local`."""
+    from eval_harness.core.models import CellDescriptor, compute_cell_id
+
+    variant_hashes: dict[str, str] = {
+        v.name: compute_cell_id(
+            run_id=plan.run_id,
+            case_id="_",
+            variant_name=v.name,
+            config_slice={
+                "variant": v.model_dump(mode="python"),
+                "evaluators": [
+                    e.model_dump(mode="python") for e in plan.config.evaluators
+                ],
+            },
+        ).rsplit("::", 1)[-1]
+        for v in plan.variants
+    }
+    workspace_kind = (
+        plan.config.workspace.type if plan.config.workspace is not None else None
+    )
+    _Cell = CellDescriptor.model_construct
+    out: list[tuple[Any, EvalCase, RunVariant]] = []
+    for case in plan.cases:
+        for variant in plan.variants:
+            if plan.cell_filter is not None and (
+                case.id,
+                variant.name,
+            ) not in plan.cell_filter:
+                continue
+            config_hash = variant_hashes[variant.name]
+            cell = _Cell(
+                schema_version="1.0",
+                cell_id=f"{plan.run_id}::{case.id}::{variant.name}::{config_hash}",
+                run_id=plan.run_id,
+                case_id=case.id,
+                variant_name=variant.name,
+                config_hash=config_hash,
+                eval_config_dict=case.model_dump(mode="python"),
+                case_dict=case.model_dump(mode="python"),
+                workspace_kind=workspace_kind,
+                pool=pool_for_variant.get(variant.name),
+            )
+            out.append((cell, case, variant))
+    return out
 
 
 async def _run_enrichers(

@@ -31,6 +31,11 @@ class SystemConfig(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
     timeout_seconds: int = 120
     enrich_trace_from: list[dict[str, Any]] = Field(default_factory=list)
+    # v2: optional capacity-pool routing. Absent / None means the
+    # variant uses the executor's per-variant semaphore (existing
+    # behaviour). When set, the LocalExecutor routes this variant's
+    # cells through the matching `run.executor.pools[<name>]` semaphore.
+    pool: str | None = None
 
 
 class WorkspaceConfig(BaseModel):
@@ -64,6 +69,21 @@ class RetryPolicy(BaseModel):
     backoff_seconds: float = 0.0
 
 
+class ExecutorConfig(BaseModel):
+    """v2: chooses the dispatch backend. Default is the in-process
+    `local` executor — omit the block entirely to keep v0/v0.1/v0.2/v1
+    behaviour unchanged.
+
+    `pools` lets a config declare named capacity pools that variants
+    reference via `systems[].pool`. Absent pools → existing per-variant
+    semaphore behaviour.
+    """
+
+    model_config = _ALLOW
+    type: str = "local"
+    pools: dict[str, int] = Field(default_factory=dict)
+
+
 class RunOptions(BaseModel):
     model_config = _FORBID
     max_concurrency: int = 4
@@ -71,6 +91,7 @@ class RunOptions(BaseModel):
     retry: RetryPolicy = Field(default_factory=RetryPolicy)
     baseline_variant: str | None = None
     cost_limit_usd: float | None = None
+    executor: ExecutorConfig = Field(default_factory=ExecutorConfig)
 
 
 class OutputConfig(BaseModel):

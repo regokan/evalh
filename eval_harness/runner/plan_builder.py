@@ -17,7 +17,9 @@ from eval_harness.factories.trace_enricher_factory import TraceEnricherFactory
 from eval_harness.factories.trace_store_factory import TraceStoreFactory
 from eval_harness.factories.workspace_factory import WorkspaceFactory
 
-_STRUCTURAL_KEYS = frozenset({"name", "adapter", "metadata", "enrich_trace_from"})
+_STRUCTURAL_KEYS = frozenset(
+    {"name", "adapter", "metadata", "enrich_trace_from", "pool"}
+)
 
 if TYPE_CHECKING:
     from eval_harness.adapters.enricher.base import TraceEnricher

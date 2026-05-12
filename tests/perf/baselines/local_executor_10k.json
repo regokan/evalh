@@ -1,0 +1,7 @@
+{
+  "_comment": "Pre-v2 wall-time baseline for the 10K-case perf test (ev-0zt). Captured on the parent commit (v1.x tip) before LocalExecutor wrapped the runner. The perf gate in tests/perf/test_local_executor_perf.py asserts that the v2 wall-time stays within 5% of this number.",
+  "wall_time_seconds": 4.65,
+  "captured_on": "2026-05-12",
+  "machine": "darwin / Python 3.13",
+  "tolerance_pct": 5.0
+}

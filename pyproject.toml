@@ -172,10 +172,11 @@ claude = "eval_harness.core.llm_backends.anthropic:AnthropicLlmBackend"
 # discovered at runtime for third-party plugins; their backends are wrapped to
 # the `LlmBackend` interface. New code registers under `eval_harness.llm_backends`.
 
-# v2: Executor entry-point group. Empty in this foundation bead — the
-# Local executor (F2) registers `local`; distributed executors (Modal /
-# K8s / Celery / Ray) register from their own packages.
+# v2: Executor entry-point group. The Local executor registers as `local`;
+# distributed executors (Modal / K8s / Celery / Ray) register from their
+# own packages in subsequent beads.
 [project.entry-points."eval_harness.executors"]
+local = "eval_harness.core.executors.local:LocalExecutor"
 
 # Sixth adapter family — TraceEnricher. Built-ins ship the OTel enricher
 # v1-supplement; Langfuse / Phoenix register their concrete enrichers in
