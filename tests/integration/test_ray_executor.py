@@ -15,6 +15,7 @@ Three buckets:
 
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -410,11 +411,20 @@ def _ray_init_works() -> bool:
     the test output — swallowing the exception silently masks real
     bugs (ev-bkz).
 
-    ``runtime_env.working_dir`` ships the stub-agent fixture directory
-    to workers so the python_function adapter's ``module:func`` target
-    resolves in the worker subprocess. eval-harness itself is pip-
-    installed so workers find it through the inherited site-packages."""
+    The stub-agent module gets onto worker subprocesses via PYTHONPATH
+    (set on the orchestrator process before ``ray.init`` so spawned
+    workers inherit it). Ray 2.55+ rejects a ``runtime_env.working_dir``
+    that's outside the project's ``pyproject.toml`` location, which
+    is the case here — ``tests/fixtures`` is below the project root.
+    eval-harness itself is pip-installed so workers find it through
+    the inherited site-packages.
+
+    ``object_store_memory`` mirrors the RayExecutor's CI-safe default
+    so the live ``ray.init`` fits inside GHA's ~64 MiB ``/dev/shm``."""
     global _RAY_INIT_ERROR
+    os.environ["PYTHONPATH"] = os.pathsep.join(
+        filter(None, [str(_STUB_DIR), os.environ.get("PYTHONPATH", "")])
+    )
     try:
         if not ray.is_initialized():
             ray.init(
@@ -423,9 +433,6 @@ def _ray_init_works() -> bool:
                 log_to_driver=False,
                 ignore_reinit_error=True,
                 configure_logging=False,
-                runtime_env={"working_dir": str(_STUB_DIR)},
-                # Mirror the RayExecutor default — GHA's /dev/shm is ~64 MiB
-                # so Ray's auto-sized 2 GiB plasma store crashes the boot.
                 object_store_memory=78_643_200,
             )
         return True
