@@ -58,8 +58,12 @@ async def run_eval(plan: RunPlan) -> RunSummary:
                 # cells short-circuit instead of dispatching to the adapter.
                 # In-flight cells (already past this check) finish naturally.
                 if accumulator.check_limit(cost_limit):
-                    return _cost_limit_outcome(
-                        case, variant, plan.run_id, accumulator.total_usd(), cost_limit
+                    return await _short_circuit_cost_limit(
+                        case,
+                        variant,
+                        plan,
+                        accumulator.total_usd(),
+                        cost_limit,
                     )
                 outcome = await _run_one(case, variant, plan)
                 accumulator.tally(outcome.trace)
@@ -70,13 +74,6 @@ async def run_eval(plan: RunPlan) -> RunSummary:
             return_exceptions=False,
         )
 
-        # Persist short-circuited traces so summary.yaml + traces.jsonl are
-        # consistent with what the runner returns. _run_one already saved
-        # the others.
-        for outcome in outcomes:
-            if outcome.trace.error is not None and outcome.trace.error.type == "cost_limit":
-                await plan.trace_store.save_trace(outcome.trace)
-
         summary = build_summary(outcomes, plan)
         await plan.trace_store.save_summary(summary)
         return summary
@@ -84,13 +81,20 @@ async def run_eval(plan: RunPlan) -> RunSummary:
     raise RuntimeError("unreachable: AsyncExitStack never re-raises")
 
 
-def _cost_limit_outcome(
+async def _short_circuit_cost_limit(
     case: EvalCase,
     variant: RunVariant,
-    run_id: str,
+    plan: RunPlan,
     accumulated: float,
     limit: float | None,
 ) -> CellOutcome:
+    """Build, persist, and return a cost_limit cell outcome.
+
+    Owning the persist side here keeps the runner's main loop ignorant of
+    error categories — per ``.claude/rules/architecture.md`` (the
+    runner-stays-boring rule), branching on ``trace.error.type`` belongs in
+    a helper, not in ``run_cell``.
+    """
     now = utc_now()
     trace = Trace.from_error(
         case.id,
@@ -102,10 +106,11 @@ def _cost_limit_outcome(
             else f"cost limit exceeded, accumulated ${accumulated:.4f}"
         ),
     )
-    trace.run_id = run_id
+    trace.run_id = plan.run_id
     trace.started_at = now
     trace.finished_at = now
     trace.latency_ms = 0
+    await plan.trace_store.save_trace(trace)
     return CellOutcome(case=case, variant=variant, trace=trace, results=[])
 
 
