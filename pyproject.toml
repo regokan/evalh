@@ -81,6 +81,7 @@ jsonl = "eval_harness.adapters.dataset.jsonl_dataset_adapter:JsonlDatasetAdapter
 
 [project.entry-points."eval_harness.trace_stores"]
 local_files = "eval_harness.adapters.trace.local_files_store:LocalFilesStore"
+sqlite      = "eval_harness.adapters.trace.sqlite_store:SqliteStore"
 
 [project.entry-points."eval_harness.workspaces"]
 tempdir_snapshot = "eval_harness.adapters.workspace.tempdir_snapshot_adapter:TempdirSnapshotAdapter"
