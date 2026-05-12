@@ -130,13 +130,19 @@ async def run(case: dict, variant: dict | None = None) -> dict:
         return {
             "final_answer": "\n".join(text_blocks).strip(),
             "tool_calls": tool_calls_recorded,
-            "tokens": {"input": total_input_tokens, "output": total_output_tokens},
+            "metrics": {
+                "token_input": total_input_tokens,
+                "token_output": total_output_tokens,
+            },
         }
 
     return {
         "final_answer": "(agent did not converge within MAX_TOOL_TURNS)",
         "tool_calls": tool_calls_recorded,
-        "tokens": {"input": total_input_tokens, "output": total_output_tokens},
+        "metrics": {
+            "token_input": total_input_tokens,
+            "token_output": total_output_tokens,
+        },
     }
 
 
