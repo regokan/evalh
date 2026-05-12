@@ -37,6 +37,11 @@ class RunPlan:
     evaluators: list[Evaluator]
     retry_policy: RetryPolicy
     baseline_variant: str | None
+    # Optional whitelist of `(case_id, variant_name)` cells. When set, run_eval
+    # executes only these specific cells (instead of the full cases x variants
+    # product). Used by `evalh run --retry-only-failed` to amend an existing
+    # run.
+    cell_filter: frozenset[tuple[str, str]] | None = None
 
 
 @dataclass

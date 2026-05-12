@@ -44,6 +44,10 @@ async def run_eval(plan: RunPlan) -> RunSummary:
         await plan.trace_store.open(plan.run_id, plan.run_dir)
 
         cells = list(itertools.product(plan.cases, plan.variants))
+        if plan.cell_filter is not None:
+            cells = [
+                (c, v) for c, v in cells if (c.id, v.name) in plan.cell_filter
+            ]
 
         async def run_cell(case: EvalCase, variant: RunVariant) -> CellOutcome:
             async with semaphores[variant.name]:

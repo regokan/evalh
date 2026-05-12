@@ -27,6 +27,20 @@ What happens:
 - `--filter 'metadata.suburb=Richmond'` — subset by case metadata.
 - `--max-concurrency N` — override `run.max_concurrency` from CLI.
 
+**Amending an existing run** (v0.2):
+
+```bash
+evalh run eval.yaml --retry-only-failed runs/2026-05-12T10-00-00_listing_price_eval
+evalh run eval.yaml --retry-only-failed <run_dir> --include-evaluator-failures
+```
+
+- `--retry-only-failed <run_dir>` — reuse the existing run's `run_id` and re-execute only its failed cells. New traces/results are *appended* to the existing `traces.jsonl` / `results.jsonl`; `summary.yaml` is rewritten to reflect the retried subset.
+- `--include-evaluator-failures` — by default only cells whose system raised (`Trace.error` set) are retried. Pass this flag to also retry cells where the system ran but at least one evaluator failed or errored.
+
+When zero cells qualify for retry the command prints `no failed cells; nothing to do` and exits 0.
+
+Downstream tooling (`evalh inspect`, `evalh compare`) sees both the original and retried rows for a `(case_id, variant_name)` cell. For SQLite/Postgres trace stores the natural shape is `INSERT … ON CONFLICT (run_id, case_id, variant_name) DO UPDATE`; the v0.2 `local_files` store is append-only by contract.
+
 ### `evalh inspect <run_dir>`
 
 Pretty-print one run. Lands in v0.1.
