@@ -44,6 +44,11 @@ openai    = ["openai>=1.40,<2"]      # judge support lands when implemented
 sqlite   = ["aiosqlite>=0.20"]
 postgres = ["asyncpg>=0.29"]
 langfuse = ["langfuse>=2"]
+# arize-phoenix-otel pins python<3.15; our package supports 3.11-3.14 so the
+# marker keeps lock resolution clean. The runtime code uses httpx + OtelClient
+# directly and doesn't import the SDK — this dep is for users who want the
+# Phoenix OpenInference instrumentation helpers alongside our adapter.
+phoenix  = ["arize-phoenix-otel>=0.6,<1 ; python_version < '3.15'"]
 git      = ["pygit2>=1.15"]
 docker   = ["docker>=7"]
 otel     = ["opentelemetry-sdk>=1.27", "opentelemetry-exporter-otlp>=1.27"]
@@ -59,6 +64,7 @@ all = [
   "aiosqlite>=0.20",
   "asyncpg>=0.29",
   "langfuse>=2",
+  "arize-phoenix-otel>=0.6,<1 ; python_version < '3.15'",
   "pygit2>=1.15",
   "docker>=7",
   "opentelemetry-sdk>=1.27",
@@ -108,6 +114,7 @@ yaml     = "eval_harness.adapters.dataset.yaml_dataset_adapter:YamlDatasetAdapte
 jsonl    = "eval_harness.adapters.dataset.jsonl_dataset_adapter:JsonlDatasetAdapter"
 fixture  = "eval_harness.adapters.dataset.fixture_dataset_adapter:FixtureDatasetAdapter"
 langfuse = "eval_harness.adapters.dataset.langfuse_dataset_adapter:LangfuseDatasetAdapter"
+phoenix  = "eval_harness.adapters.dataset.phoenix_dataset_adapter:PhoenixDatasetAdapter"
 
 [project.entry-points."eval_harness.trace_stores"]
 local_files = "eval_harness.adapters.trace.local_files_store:LocalFilesStore"
@@ -115,6 +122,7 @@ sqlite      = "eval_harness.adapters.trace.sqlite_store:SqliteStore"
 postgres    = "eval_harness.adapters.trace.postgres_store:PostgresStore"
 otel        = "eval_harness.adapters.trace.otel_trace_store:OtelTraceStore"
 langfuse    = "eval_harness.adapters.trace.langfuse_trace_store:LangfuseTraceStore"
+phoenix     = "eval_harness.adapters.trace.phoenix_trace_store:PhoenixTraceStore"
 
 [project.entry-points."eval_harness.workspaces"]
 tempdir_snapshot = "eval_harness.adapters.workspace.tempdir_snapshot_adapter:TempdirSnapshotAdapter"
@@ -133,6 +141,7 @@ claude = "eval_harness.core.llm_backends.anthropic:AnthropicLlmBackend"
 [project.entry-points."eval_harness.trace_enrichers"]
 otel     = "eval_harness.adapters.enricher.otel_enricher:OtelTraceEnricher"
 langfuse = "eval_harness.adapters.enricher.langfuse_enricher:LangfuseTraceEnricher"
+phoenix  = "eval_harness.adapters.enricher.phoenix_enricher:PhoenixTraceEnricher"
 
 [project.urls]
 Homepage = "https://github.com/regokan/evalh"
