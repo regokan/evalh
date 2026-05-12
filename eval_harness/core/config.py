@@ -78,6 +78,11 @@ class OutputConfig(BaseModel):
     path: str | None = None
 
 
+class MetricsConfig(BaseModel):
+    model_config = _FORBID
+    price_table_path: str | None = None
+
+
 class EvalConfig(BaseModel):
     model_config = _FORBID
     schema_version: str = "1.0"
@@ -90,6 +95,7 @@ class EvalConfig(BaseModel):
     evaluators: list[EvaluatorConfig]
     pass_criteria: PassCriteria = Field(default_factory=PassCriteria)
     run: RunOptions = Field(default_factory=RunOptions)
+    metrics: MetricsConfig = Field(default_factory=MetricsConfig)
     output: list[OutputConfig]
 
     @model_validator(mode="before")

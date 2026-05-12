@@ -75,6 +75,7 @@ output        list of TraceStores; first one is canonical, others are mirrors
 | `run.retry.backoff_seconds` | float | no | Exponential base. |
 | `run.baseline_variant` | string | no | Used by ComparisonReport in `summary.yaml`. |
 | `run.cost_limit_usd` | float | no | Run-level cost guardrail. When accumulated `trace.metrics.cost_usd` across completed cells reaches this value, queued cells are short-circuited with a `cost_limit` Trace. Independent from and additive to per-evaluator `cost_limit_usd`. |
+| `metrics.price_table_path` | string | no | YAML file describing per-model token prices. The runner fills `trace.metrics.cost_usd` from this table when an adapter reports token counts but no $ figure. Path is resolved relative to the `eval.yaml` location. When omitted, the runner uses a versioned built-in `DEFAULT_PRICE_TABLE` and emits one `logging.warning` per run noting its `freshness_date` so the staleness is visible. The model name is read from `systems[].metadata.model` (with `systems[].model` as a fallback). |
 | `output[]` | list[dict] | yes | At least one TraceStore. Single mapping is accepted and coerced to a one-element list. |
 | `output[].type` | enum | yes | One of the registered TraceStores. |
 | `output[].path` | string | type-dependent | Required for `local_files`. |

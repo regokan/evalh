@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 from eval_harness.core.config import EvalConfig, RetryPolicy, SystemConfig
 from eval_harness.core.errors import ConfigError
 from eval_harness.core.models import EvalCase, RunVariant
+from eval_harness.core.price_tables import PriceTable, load_price_table
 from eval_harness.core.time import make_run_id
 from eval_harness.factories.dataset_adapter_factory import DatasetAdapterFactory
 from eval_harness.factories.evaluator_factory import EvaluatorFactory
@@ -37,6 +38,7 @@ class RunPlan:
     evaluators: list[Evaluator]
     retry_policy: RetryPolicy
     baseline_variant: str | None
+    price_table: PriceTable | None = None
     # Optional whitelist of `(case_id, variant_name)` cells. When set, run_eval
     # executes only these specific cells (instead of the full cases x variants
     # product). Used by `evalh run --retry-only-failed` to amend an existing
@@ -120,6 +122,8 @@ async def build_plan(
             f"defined: {sorted(known_variants)}"
         )
 
+    price_table = _build_price_table(config, config_path)
+
     return RunPlan(
         config=config,
         run_id=run_id,
@@ -132,7 +136,18 @@ async def build_plan(
         evaluators=evaluators,
         retry_policy=config.run.retry,
         baseline_variant=baseline,
+        price_table=price_table,
     )
+
+
+def _build_price_table(config: EvalConfig, config_path: Path) -> PriceTable:
+    raw = config.metrics.price_table_path
+    if raw is None:
+        return load_price_table(None)
+    path = Path(raw)
+    if not path.is_absolute():
+        path = (config_path.parent / path).resolve()
+    return load_price_table(path)
 
 
 def _system_extras(sys_cfg: SystemConfig) -> dict[str, object]:

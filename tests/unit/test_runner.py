@@ -423,3 +423,114 @@ async def test_latency_invariant_overwrites_adapter_value() -> None:
     assert trace.latency_ms >= 0
     assert isinstance(trace.started_at, datetime)
     assert trace.finished_at >= trace.started_at
+
+
+class TokenOnlyAdapter:
+    """Adapter that reports tokens but not cost — exercises price-table fill."""
+
+    def __init__(self, name: str) -> None:
+        self.name = name
+
+    async def __aenter__(self) -> Self:
+        return self
+
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        tb: TracebackType | None,
+    ) -> None:
+        return None
+
+    async def run(
+        self, case: EvalCase, variant: RunVariant, workspace: Any
+    ) -> Trace:
+        now = utc_now()
+        return Trace(
+            run_id="",
+            case_id=case.id,
+            variant_name=variant.name,
+            started_at=now,
+            finished_at=now,
+            latency_ms=1,
+            input=dict(case.input),
+            output=TraceOutput(final_answer="x"),
+            metrics=TraceMetrics(
+                token_input=1_000_000, token_output=500_000, cost_usd=None
+            ),
+        )
+
+
+async def test_runner_fills_cost_from_price_table_when_adapter_omits_it() -> None:
+    from eval_harness.core.price_tables import DEFAULT_PRICE_TABLE
+
+    adapter = TokenOnlyAdapter("v1")
+    cases = _make_cases(1)
+    variants = [
+        RunVariant(name="v1", adapter="fake", config={}, metadata={"model": "claude-4-7"})
+    ]
+    store = FakeTraceStore()
+    plan = _make_plan(
+        cases=cases,
+        variants=variants,
+        adapters={"v1": adapter},
+        evaluators=[PassingEvaluator(name="ev")],
+        store=store,
+    )
+    plan.price_table = DEFAULT_PRICE_TABLE
+
+    await run_eval(plan)
+
+    trace = store.traces[0]
+    # claude-4-7: $3/M input + $15/M output -> 1M*$3 + 0.5M*$15 = $10.5
+    assert trace.metrics.cost_usd == pytest.approx(10.5)
+
+
+async def test_runner_leaves_cost_alone_when_adapter_reported_it() -> None:
+    from eval_harness.core.price_tables import DEFAULT_PRICE_TABLE
+
+    adapter = SleepingAdapter("v1")  # reports cost_usd=0.001
+    cases = _make_cases(1)
+    variants = [
+        RunVariant(name="v1", adapter="fake", config={}, metadata={"model": "claude-4-7"})
+    ]
+    store = FakeTraceStore()
+    plan = _make_plan(
+        cases=cases,
+        variants=variants,
+        adapters={"v1": adapter},
+        evaluators=[PassingEvaluator(name="ev")],
+        store=store,
+    )
+    plan.price_table = DEFAULT_PRICE_TABLE
+
+    await run_eval(plan)
+
+    trace = store.traces[0]
+    assert trace.metrics.cost_usd == pytest.approx(0.001)
+
+
+async def test_runner_skips_fill_for_unknown_model() -> None:
+    from eval_harness.core.price_tables import DEFAULT_PRICE_TABLE
+
+    adapter = TokenOnlyAdapter("v1")
+    cases = _make_cases(1)
+    variants = [
+        RunVariant(
+            name="v1", adapter="fake", config={}, metadata={"model": "made-up-model"}
+        )
+    ]
+    store = FakeTraceStore()
+    plan = _make_plan(
+        cases=cases,
+        variants=variants,
+        adapters={"v1": adapter},
+        evaluators=[PassingEvaluator(name="ev")],
+        store=store,
+    )
+    plan.price_table = DEFAULT_PRICE_TABLE
+
+    await run_eval(plan)
+
+    trace = store.traces[0]
+    assert trace.metrics.cost_usd is None  # unknown model, runner left it

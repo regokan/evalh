@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import itertools
+import logging
 from contextlib import AsyncExitStack, suppress
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
@@ -14,9 +15,16 @@ from eval_harness.core.models import (
     Trace,
     TraceError,
 )
+from eval_harness.core.price_tables import (
+    PriceTable,
+    compute_cost,
+    warn_default_table_in_use,
+)
 from eval_harness.core.time import utc_now
 from eval_harness.runner.cost_accumulator import CostAccumulator
 from eval_harness.runner.summary import SummaryAggregator
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from eval_harness.adapters.workspace.base import Workspace
@@ -37,6 +45,9 @@ async def run_eval(plan: RunPlan) -> RunSummary:
     accumulator = CostAccumulator()
     cost_limit = plan.config.run.cost_limit_usd
     aggregator = SummaryAggregator(plan=plan)
+    if plan.price_table is not None:
+        warn_default_table_in_use(plan.price_table)
+    variant_models = _build_variant_model_index(plan.variants)
 
     async with AsyncExitStack() as stack:
         await stack.enter_async_context(plan.trace_store)
@@ -68,6 +79,9 @@ async def run_eval(plan: RunPlan) -> RunSummary:
                     )
                 else:
                     outcome = await _run_one(case, variant, plan)
+                    _fill_cost_from_price_table(
+                        outcome.trace, variant_models.get(variant.name), plan.price_table
+                    )
                     accumulator.tally(outcome.trace)
                 # Stream the outcome into the aggregator immediately and let
                 # it fall out of scope. This is the streaming-summary
@@ -85,6 +99,55 @@ async def run_eval(plan: RunPlan) -> RunSummary:
         return summary
 
     raise RuntimeError("unreachable: AsyncExitStack never re-raises")
+
+
+def _build_variant_model_index(variants: list[RunVariant]) -> dict[str, str]:
+    """Map variant name -> declared model. Looks in `metadata.model` first
+    (the canonical place per docs/ConfigSchema.md), then `config.model` for
+    adapters that nest it there. Variants without a declared model are
+    omitted; the runner just doesn't fill cost for them."""
+    out: dict[str, str] = {}
+    for v in variants:
+        raw = v.metadata.get("model") or v.config.get("model")
+        if isinstance(raw, str) and raw:
+            out[v.name] = raw
+    return out
+
+
+def _fill_cost_from_price_table(
+    trace: Trace, model: str | None, table: PriceTable | None
+) -> None:
+    """If the adapter didn't fill `cost_usd` but did report token counts, use
+    the price table. No-op when prices are unavailable for the model."""
+    if table is None or model is None:
+        return
+    metrics = trace.metrics
+    if metrics.cost_usd is not None:
+        return
+    token_input = metrics.token_input or 0
+    token_output = metrics.token_output or 0
+    token_thinking = metrics.token_thinking or 0
+    if token_input == 0 and token_output == 0 and token_thinking == 0:
+        return
+    cost = compute_cost(table, model, token_input, token_output, token_thinking)
+    if cost is None:
+        logger.debug(
+            "price_table: no entry for model %r (variant %r); cost_usd left None",
+            model,
+            trace.variant_name,
+        )
+        return
+    metrics.cost_usd = cost
+    logger.debug(
+        "price_table: filled cost_usd=%.6f for variant=%r model=%r "
+        "(in=%d, out=%d, thinking=%d)",
+        cost,
+        trace.variant_name,
+        model,
+        token_input,
+        token_output,
+        token_thinking,
+    )
 
 
 async def _short_circuit_cost_limit(
