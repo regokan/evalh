@@ -18,7 +18,9 @@ poetry run pytest tests/unit/             # unit only
 poetry run pytest tests/integration/      # integration only
 ```
 
-CI runs unit + integration. The smoke test is documented below; it costs money and needs a real API key, so it stays out of `pytest tests/`.
+CI runs unit + integration via `.github/workflows/ci.yml` (matrix over Python 3.11 / 3.12 / 3.13 with `uv`). The `perf`-marked tests are skipped in CI (`pytest -m "not perf"`) and reserved for opt-in local runs.
+
+The smoke test is documented below; it costs money and needs a real API key, so it stays out of `pytest tests/`. It has its own workflow at `.github/workflows/smoke.yml` triggered only by `workflow_dispatch` (Actions tab → "Smoke (manual)" → "Run workflow"). The workflow reads `ANTHROPIC_API_KEY` from repo secrets and uploads the resulting `runs/` directory as an artifact.
 
 ## Manual smoke
 

@@ -127,6 +127,7 @@ testpaths = ["tests"]
 addopts = "-ra --strict-markers"
 markers = [
   "integration: end-to-end tests that hit a real LLM (require ANTHROPIC_API_KEY)",
+  "perf: long-running performance tests (e.g. 10K-case streaming aggregate)",
 ]
 
 [tool.ruff]

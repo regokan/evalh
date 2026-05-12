@@ -1,0 +1,54 @@
+name: Smoke (manual)
+
+# Real Anthropic-backed end-to-end smoke. Not on push — it costs money and
+# needs a key. Trigger manually from the Actions tab.
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Ref to run smoke against"
+        required: false
+        default: "main"
+
+env:
+  UV_VERSION: "0.5.18"
+
+jobs:
+  smoke:
+    name: evalh run examples/tiny_demo/eval.yaml
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.ref }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+
+      - name: Set up Python 3.11
+        run: uv python install 3.11
+
+      - name: Install eval-harness with anthropic + sqlite extras
+        run: uv sync --extra anthropic --extra sqlite --no-dev
+
+      - name: evalh run examples/tiny_demo/eval.yaml
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          if [ -z "$ANTHROPIC_API_KEY" ]; then
+            echo "::error::ANTHROPIC_API_KEY secret is not set; smoke cannot run."
+            exit 1
+          fi
+          uv run --no-sync evalh run examples/tiny_demo/eval.yaml
+
+      - name: Upload run directory
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-run
+          path: runs/
+          if-no-files-found: warn

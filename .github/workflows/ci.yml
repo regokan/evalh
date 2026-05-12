@@ -1,0 +1,78 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Cancel in-flight CI for the same branch when a new commit lands.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Pin uv for reproducibility; bump deliberately, not drive-by.
+  UV_VERSION: "0.5.18"
+  PYTHONDONTWRITEBYTECODE: "1"
+  PYTHONUNBUFFERED: "1"
+
+jobs:
+  test:
+    name: pytest (py${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+
+      - name: Set up Python ${{ matrix.python-version }}
+        run: uv python install ${{ matrix.python-version }}
+
+      - name: Install eval-harness with testable extras
+        # postgres extra deliberately omitted — there's no service container
+        # in scope for v0.2 and the parametrized trace-store tests skip
+        # cleanly when the backend isn't built.
+        run: |
+          uv sync --extra anthropic --extra sqlite --extra git --no-dev
+          uv pip install pytest pytest-asyncio pytest-cov respx mypy types-PyYAML
+
+      - name: ruff check
+        run: uv run --no-sync ruff check .
+
+      - name: pytest
+        # `not perf` skips the perf-marked tests reserved for the v0.2
+        # streaming/10K-case bead; CI runs unit + integration + parametrized
+        # backend contract tests.
+        run: uv run --no-sync pytest tests/ -q -m "not perf"
+
+  typecheck:
+    name: mypy --strict (py3.11)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+
+      - name: Set up Python 3.11
+        run: uv python install 3.11
+
+      - name: Install eval-harness with testable extras
+        run: |
+          uv sync --extra anthropic --extra sqlite --extra git --no-dev
+          uv pip install mypy types-PyYAML
+
+      - name: mypy --strict
+        run: uv run --no-sync mypy --strict eval_harness/
