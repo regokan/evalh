@@ -64,13 +64,14 @@ async def _seed_run(
 
     store = LocalFilesStore(path=str(base / "runs"))
     await store.open(run_id, run_dir)
-    cases_seen: set[tuple[str, str]] = set()
+    traced: set[tuple[str, str]] = set()
     for case_id, variant, evaluator, passed in case_results:
-        cases_seen.add((case_id, variant))
-        await store.save_trace(_trace(case_id, variant)) if (case_id, variant) not in cases_seen else None
-        await store.save_evaluation(case_id, variant, [_result(case_id, variant, evaluator, passed)])
-    # Save one trace per (case, variant) pair (idempotent INSERT not needed; the
-    # local files store appends so we deduped above via the set check).
+        if (case_id, variant) not in traced:
+            await store.save_trace(_trace(case_id, variant))
+            traced.add((case_id, variant))
+        await store.save_evaluation(
+            case_id, variant, [_result(case_id, variant, evaluator, passed)]
+        )
 
     variants = [
         VariantSummary(
@@ -160,7 +161,7 @@ def test_compare_emits_regressions_and_improvements(tmp_path: Path) -> None:
     assert "c2" in result.output
 
     # Per-variant delta: B is 50%, A was 100% -> delta -50%.
-    assert "-50" in result.output or "−50" in result.output
+    assert "-50" in result.output
 
 
 def test_compare_reports_cases_only_in_one_run(tmp_path: Path) -> None:

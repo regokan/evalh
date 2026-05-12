@@ -11,8 +11,6 @@ import click
 if TYPE_CHECKING:
     from rich.console import Console
 
-    from eval_harness.core.models import EvaluationResult
-
 
 @dataclass
 class _RunSnapshot:
@@ -207,8 +205,3 @@ def _print_pass_rate_table(
     console.print(table)
 
 
-def _evaluator_pass_rate(results: list[EvaluationResult]) -> float:
-    if not results:
-        return 0.0
-    passed = sum(1 for r in results if r.passed and r.error is None)
-    return passed / len(results)
