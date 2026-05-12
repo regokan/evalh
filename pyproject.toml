@@ -54,6 +54,11 @@ phoenix  = ["arize-phoenix-otel>=0.6,<1 ; python_version < '3.15'"]
 # is for users who want the Arize OpenInference instrumentation helpers
 # alongside our adapter.
 arize    = ["arize-otel>=0.7,<1 ; python_version < '3.15'"]
+# Helicone integration is REST-only — httpx is in core, no SDK required.
+# The [helicone] extra is a marker so consumers can declare intent in
+# their project's lockfile and `pytest.importorskip('helicone')` can gate
+# integration tests when a user wants to add live-API coverage later.
+helicone = []
 git      = ["pygit2>=1.15"]
 docker   = ["docker>=7"]
 otel     = ["opentelemetry-sdk>=1.27", "opentelemetry-exporter-otlp>=1.27"]
@@ -122,6 +127,7 @@ fixture  = "eval_harness.adapters.dataset.fixture_dataset_adapter:FixtureDataset
 langfuse = "eval_harness.adapters.dataset.langfuse_dataset_adapter:LangfuseDatasetAdapter"
 phoenix  = "eval_harness.adapters.dataset.phoenix_dataset_adapter:PhoenixDatasetAdapter"
 arize    = "eval_harness.adapters.dataset.arize_dataset_adapter:ArizeDatasetAdapter"
+helicone = "eval_harness.adapters.dataset.helicone_dataset_adapter:HeliconeDatasetAdapter"
 
 [project.entry-points."eval_harness.trace_stores"]
 local_files = "eval_harness.adapters.trace.local_files_store:LocalFilesStore"

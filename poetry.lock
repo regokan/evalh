@@ -4136,6 +4136,7 @@ anthropic = ["anthropic"]
 docker = ["docker"]
 embeddings-local = ["sentence-transformers"]
 git = ["pygit2"]
+helicone = []
 langfuse = ["langfuse"]
 openai = ["openai"]
 otel = ["opentelemetry-exporter-otlp", "opentelemetry-sdk"]
@@ -4146,4 +4147,4 @@ sqlite = ["aiosqlite"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.11,<4"
-content-hash = "3ef0b5167e0fddaa0ac88b3f2a1ed4cdde96af268ed1646bf32315f636f41d6e"
+content-hash = "5b02b6ba7ead95681a81b391916e08e9826a06dbadf08e211b808d759d9b6331"
