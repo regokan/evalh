@@ -1,6 +1,8 @@
 # Example: online_eval
 
-Online evaluation against historical traces. The dataset is fetched from an observability platform (Langfuse here); the `production_replay` variant scores those traces without invoking any system; an optional `candidate_v4` variant backtests a new prompt against the same inputs.
+Online evaluation against historical traces — runnable **offline**.
+
+The dataset here is a YAML fixture (`embedded_traces.yaml`) standing in for what a real observability platform (Langfuse, Phoenix, Arize, OTel) would return. The `production_replay` variant scores those traces without invoking any system. To run it against a live platform, swap the `dataset.type` block — everything else is unchanged.
 
 This is the workflow described in [Observability.md → Pattern 4](../../docs/Observability.md#pattern-4-online-evaluation).
 
@@ -8,32 +10,47 @@ This is the workflow described in [Observability.md → Pattern 4](../../docs/Ob
 
 | File | What it is |
 |---|---|
-| [`eval.yaml`](eval.yaml) | The run config. Langfuse dataset, replay + candidate variants, three evaluators. |
+| [`embedded_traces.yaml`](embedded_traces.yaml) | Three synthesized 'production' traces with `embedded_trace` payloads (shape matches Langfuse-style output). |
+| [`eval.yaml`](eval.yaml) | `dataset.type: fixture` + `embed_full_trace: true` + a `replay` variant + three evaluators. |
 
-This example does not ship a `cases.yaml` — cases come from Langfuse at run time.
-
-## Required environment
-
-```bash
-export LANGFUSE_API_KEY=...
-export LANGFUSE_HOST=https://cloud.langfuse.com
-export AGENT_API_KEY=...                  # only needed if you keep candidate_v4
-```
+There is no separate `cases.yaml` — the `fixture` DatasetAdapter reads cases and their embedded traces from the single file above. With a real platform adapter (`langfuse`, `phoenix`, ...) cases come from the platform at run time.
 
 ## Run it
 
 ```bash
-# To score production only — comment out `candidate_v4` in eval.yaml first
 evalh run examples/online_eval/eval.yaml
 ```
 
-## What you get
+No environment variables, no network. The runner produces a `runs/<run_id>/` directory with:
 
-Per-case results for production traffic, plus (if `candidate_v4` is enabled) a per-case comparison: which cases the candidate would have flipped to passing, and which it would have regressed.
+- `traces.jsonl` — the replayed traces (`extra.source == "replay"`, `extra.replayed_from.platform == "fixture"`, original `started_at` / `finished_at` / `latency_ms` / `metrics.*` preserved byte-for-byte).
+- `results.jsonl` — per-evaluator verdicts.
+- `summary.yaml` — per-variant aggregate.
 
+Expected outcome on the shipped fixture: **2/3 cases pass.** `prod_003` is intentionally a weak trace — the agent skipped the `get_average_suburb_price` tool — so the evaluators have something to fail on.
+
+## Going from fixture to a real platform
+
+Replace the `dataset:` block in `eval.yaml`:
+
+```yaml
+dataset:
+  type: langfuse                  # phoenix, arize, otel, ... when shipped
+  api_key: ${LANGFUSE_API_KEY}
+  host: ${LANGFUSE_HOST}
+  filter:
+    tags: [production]
+    timestamp_gt: "2026-04-26T00:00:00Z"
+    user_score_lt: 0.5
+  sample: 100
+  embed_full_trace: true
 ```
-runs/<run_id>/summary.yaml   # comparison.deltas[].regressions / .improvements
-```
+
+Everything else — the `replay` variant, the evaluators, the trace store — stays identical. The `embed_full_trace: true` flag is the contract the `replay` adapter cares about; how the cases were loaded is opaque to it.
+
+## Backtest a candidate against the same inputs
+
+Uncomment the `candidate_v4` block in [`eval.yaml`](eval.yaml) and start your service on `http://localhost:8000/chat` (set `AGENT_API_KEY` if it expects auth). The runner will expand `cases × variants`: each case gets one replayed cell and one fresh `candidate_v4` cell, with a per-case comparison in `summary.yaml`.
 
 ## Three modes summarised
 

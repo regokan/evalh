@@ -1,0 +1,17 @@
+schema_version: "1.0"
+
+dataset:
+  name: coding_agent
+  description: "Tiny coding-agent cases: edit one file to make tests pass."
+
+cases:
+  - id: fix_subtract
+    input:
+      target_file: calc.py
+      task: |-
+        The `subtract` function in calc.py currently raises NotImplementedError.
+        Implement it so it returns a - b. Leave `add` untouched.
+    metadata:
+      difficulty: trivial
+    expected:
+      answer_should_include: [Edited]

@@ -1,31 +1,29 @@
-# Online evaluation example.
+# Online evaluation example — offline-runnable.
 #
-# Pulls historical traces from Langfuse, runs evaluators against them
-# (no system call for the `production_replay` variant), and optionally
-# backtests one or more candidate systems against the same inputs.
+# The dataset is a YAML fixture of "production" traces (see
+# embedded_traces.yaml). In a real deployment the same eval.yaml shape
+# works with `dataset.type: langfuse` (or phoenix / arize / otel) once
+# those adapters ship — only the dataset block changes; everything below
+# stays the same. This fixture form keeps the pipeline runnable on a
+# fresh checkout with no API keys.
 #
 # Runnable: `evalh run examples/online_eval/eval.yaml`
 
 eval:
   name: production_quality_check
-  description: "Score last week's production traffic; backtest candidates against the same inputs."
-  tags: [online-eval, langfuse]
+  description: "Score 'production' traffic offline via the fixture DatasetAdapter."
+  tags: [online-eval, replay, fixture]
 
 metadata:
   judge_model: claude-4-7
-  source: langfuse-production
+  source: fixture
 
-# DatasetAdapter pulls from Langfuse. `embed_full_trace: true` means each
-# case carries the full upstream Trace, which the `replay` SystemAdapter unwraps.
+# The fixture adapter reads embedded_traces.yaml and attaches each case's
+# full upstream Trace, which the `replay` SystemAdapter then unwraps.
+# Set `embed_full_trace: true` so every case carries its trace.
 dataset:
-  type: langfuse
-  api_key: ${LANGFUSE_API_KEY}
-  host: ${LANGFUSE_HOST}
-  filter:
-    tags: [production]
-    timestamp_gt: "2026-04-26T00:00:00Z"
-    user_score_lt: 0.5                 # focus on traces the user rated poorly
-  sample: 100                          # cap blast radius for the LLM judge
+  type: fixture
+  path: examples/online_eval/embedded_traces.yaml
   embed_full_trace: true
 
 systems:
@@ -34,25 +32,28 @@ systems:
     adapter: replay
     metadata:
       kind: replay
-      source: langfuse-production
+      source: fixture
 
-  # Variant 2: backtest a candidate prompt against the same inputs.
-  # Comment this out if you only want to score production.
-  - name: candidate_v4
-    adapter: http
-    endpoint: http://localhost:8000/chat
-    timeout_seconds: 60
-    headers:
-      Authorization: "Bearer ${AGENT_API_KEY}"
-    request_template: |
-      { "user_message": "{{ input.user_message }}", "session_id": "{{ case_id }}" }
-    response_mapping:
-      final_answer: $.answer
-      tool_calls: $.tool_calls
-    metadata:
-      kind: candidate
-      branch: feat/v4-prompt
-      model: claude-4-7
+  # Variant 2 (optional): backtest a candidate prompt against the same
+  # inputs. Uncomment + start your service to run it. Without
+  # $AGENT_API_KEY the runner short-circuits this variant with a
+  # configuration error — keep it commented for the offline smoke path.
+  #
+  # - name: candidate_v4
+  #   adapter: http
+  #   endpoint: http://localhost:8000/chat
+  #   timeout_seconds: 60
+  #   headers:
+  #     Authorization: "Bearer ${AGENT_API_KEY}"
+  #   request_template: |
+  #     { "user_message": "{{ input.user_message }}", "session_id": "{{ case_id }}" }
+  #   response_mapping:
+  #     final_answer: $.answer
+  #     tool_calls: $.tool_calls
+  #   metadata:
+  #     kind: candidate
+  #     branch: feat/v4-prompt
+  #     model: claude-4-7
 
 evaluators:
   - name: must_call_listing_tool
@@ -60,30 +61,26 @@ evaluators:
     config:
       tool_name: get_listing_details
 
-  - name: answer_quality
-    type: llm_judge
+  - name: must_call_suburb_price_tool
+    type: tool_called
     config:
-      model: claude-4-7
-      nl_assertions:
-        - "The answer mentions the listing's suburb."
-        - "The answer states the average house price for that suburb."
-        - "The answer compares the listing price to the suburb average."
-      pass_when: all
-      cost_limit_usd: 0.05
+      tool_name: get_average_suburb_price
 
-  - name: thinking_within_budget
-    type: thinking_tokens_under
+  - name: answer_mentions_suburb
+    type: contains_text
     config:
-      threshold: 4000
+      any_of: [Richmond, Brunswick, Carlton]
+      case_sensitive: false
 
 pass_criteria:
   all_required:
     - must_call_listing_tool
-    - answer_quality
+    - must_call_suburb_price_tool
+    - answer_mentions_suburb
 
 run:
-  max_concurrency: 8
-  baseline_variant: production_replay   # ComparisonReport diffs candidates against this
+  max_concurrency: 4
+  baseline_variant: production_replay
 
 output:
   - type: local_files

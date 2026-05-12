@@ -245,7 +245,7 @@ flowchart TB
 
 It composes from existing pieces:
 
-- **DatasetAdapter** with `embed_full_trace: true` — fetches the full upstream trace, not just the input. See [Adapters.md → DatasetAdapter](Adapters.md#datasetadapter).
+- **DatasetAdapter** with `embed_full_trace: true` — fetches the full upstream trace, not just the input. See [Adapters.md → DatasetAdapter](Adapters.md#datasetadapter). In v1 the built-ins that support this contract are `fixture` (loads embedded traces from a YAML file — used by [`examples/online_eval/`](../examples/online_eval/) and the test surface). Platform adapters (`langfuse`, `phoenix`, `arize`, `otel`) implement the same contract and slot into the YAML below by changing the `dataset.type` block; everything downstream is unchanged.
 - **`replay` SystemAdapter** — unwraps the embedded trace and returns it. No system call. See [Adapters.md → `replay`](Adapters.md#v1-replay--for-online-evaluation).
 - Same evaluators as any other run — they don't know the trace came from history.
 

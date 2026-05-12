@@ -99,6 +99,8 @@ class PythonFunctionAdapter:
 
         case_arg = case.model_dump()
         variant_arg = variant.model_dump()
+        if workspace is not None:
+            variant_arg["_workspace_path"] = str(workspace.path)
 
         started_at = utc_now()
         try:

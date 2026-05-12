@@ -1,0 +1,62 @@
+# Coding-agent example.
+#
+# The agent gets a stub Python file with a TODO + a failing test; it asks
+# Claude for a patch, writes it back to a sandboxed copy of the fixture
+# repo (via tempdir_snapshot), and the `command` evaluator runs pytest
+# against the artifact directory to grade the result.
+#
+# Smoke test — requires ANTHROPIC_API_KEY. CI does not run this.
+# Runtime budget: < 90s for the shipped single-case run.
+#
+# Run:  evalh run examples/coding_agent/eval.yaml
+
+eval:
+  name: coding_agent
+  description: "Edit one file in a sandboxed repo to make pytest pass."
+  tags: [smoke, coding-agent, demo]
+
+dataset:
+  type: yaml
+  path: examples/coding_agent/cases.yaml
+
+# tempdir_snapshot copies the fixture repo into a fresh per-case temp dir
+# before the agent runs and snapshots the resulting tree for the
+# command evaluator to grade against.
+workspace:
+  type: tempdir_snapshot
+  copy_from: examples/coding_agent/fixture_repo
+
+systems:
+  - name: claude_coder
+    adapter: python_function
+    target: examples.coding_agent.agent:run
+    metadata:
+      model: claude-haiku-4-5-20251001
+
+evaluators:
+  - name: tests_pass
+    type: command
+    config:
+      # `cwd` defaults to the FilesystemArtifact's artifacts_path — the
+      # snapshot the workspace adapter staged AFTER the agent ran. So this
+      # runs pytest against whatever the agent wrote.
+      cmd: [python, -m, pytest, -q]
+      timeout_seconds: 60
+      expected_exit_code: 0
+
+  - name: agent_reported_edit
+    type: contains_text
+    config:
+      all_of: [Edited]
+
+pass_criteria:
+  all_required:
+    - tests_pass
+
+run:
+  max_concurrency: 1
+  baseline_variant: claude_coder
+
+output:
+  - type: local_files
+    path: runs/

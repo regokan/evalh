@@ -1,0 +1,126 @@
+schema_version: "1.0"
+
+# Synthesized fixture traces standing in for what a real DatasetAdapter
+# (langfuse / phoenix / arize) would return. Shaped to look plausibly like
+# Langfuse output: assistant messages, tool calls, token + cost metrics, and
+# an upstream trace_id. Drop in a real DatasetAdapter and the rest of the
+# pipeline does not change.
+
+dataset:
+  name: online_eval_fixture
+  description: "Three 'production' traces with the canonical pricing-comparison shape."
+
+cases:
+  - id: prod_001
+    input:
+      user_message: "What is the average house price near listing ABC123?"
+    metadata:
+      listing_id: ABC123
+      suburb: Richmond
+    embedded_trace:
+      schema_version: "1.0"
+      run_id: langfuse_prod
+      case_id: prod_001
+      variant_name: production
+      started_at: "2026-05-01T10:00:00+00:00"
+      finished_at: "2026-05-01T10:00:02.450000+00:00"
+      latency_ms: 2450
+      input:
+        user_message: "What is the average house price near listing ABC123?"
+      output:
+        final_answer: |-
+          Listing ABC123 is in Richmond. The Richmond average is around
+          $1,200,000, and ABC123 is listed at $1,350,000 — slightly above
+          the suburb average.
+        thinking: null
+      tool_calls:
+        - name: get_listing_details
+          arguments: { listing_id: ABC123 }
+        - name: get_average_suburb_price
+          arguments: { suburb: Richmond }
+      tool_results:
+        - name: get_listing_details
+          content: { listing_id: ABC123, suburb: Richmond, price: 1350000 }
+        - name: get_average_suburb_price
+          content: { suburb: Richmond, average_price: 1200000 }
+      metrics:
+        token_input: 412
+        token_output: 87
+        cost_usd: 0.00198
+      extra:
+        trace_id: lf_abc123
+        source_platform: langfuse
+
+  - id: prod_002
+    input:
+      user_message: "Is listing XYZ789 expensive for its suburb?"
+    metadata:
+      listing_id: XYZ789
+      suburb: Brunswick
+    embedded_trace:
+      schema_version: "1.0"
+      run_id: langfuse_prod
+      case_id: prod_002
+      variant_name: production
+      started_at: "2026-05-01T10:01:14+00:00"
+      finished_at: "2026-05-01T10:01:17.120000+00:00"
+      latency_ms: 3120
+      input:
+        user_message: "Is listing XYZ789 expensive for its suburb?"
+      output:
+        final_answer: |-
+          XYZ789 sits in Brunswick. At $1,100,000 it's above the Brunswick
+          average of $950,000.
+        thinking: null
+      tool_calls:
+        - name: get_listing_details
+          arguments: { listing_id: XYZ789 }
+        - name: get_average_suburb_price
+          arguments: { suburb: Brunswick }
+      tool_results:
+        - name: get_listing_details
+          content: { listing_id: XYZ789, suburb: Brunswick, price: 1100000 }
+        - name: get_average_suburb_price
+          content: { suburb: Brunswick, average_price: 950000 }
+      metrics:
+        token_input: 398
+        token_output: 64
+        cost_usd: 0.00171
+      extra:
+        trace_id: lf_xyz789
+        source_platform: langfuse
+
+  # A trace where the agent skipped the suburb-price tool and produced a
+  # weak answer — present so the evaluators have something to fail on.
+  - id: prod_003
+    input:
+      user_message: "Tell me about listing DEF456."
+    metadata:
+      listing_id: DEF456
+      suburb: Carlton
+    embedded_trace:
+      schema_version: "1.0"
+      run_id: langfuse_prod
+      case_id: prod_003
+      variant_name: production
+      started_at: "2026-05-01T10:02:01+00:00"
+      finished_at: "2026-05-01T10:02:02.880000+00:00"
+      latency_ms: 1880
+      input:
+        user_message: "Tell me about listing DEF456."
+      output:
+        final_answer: "Listing DEF456 is on the market at $1,500,000."
+        thinking: null
+      tool_calls:
+        - name: get_listing_details
+          arguments: { listing_id: DEF456 }
+      tool_results:
+        - name: get_listing_details
+          content: { listing_id: DEF456, suburb: Carlton, price: 1500000 }
+      metrics:
+        token_input: 285
+        token_output: 38
+        cost_usd: 0.00114
+      extra:
+        trace_id: lf_def456
+        source_platform: langfuse
