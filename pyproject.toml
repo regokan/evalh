@@ -68,6 +68,7 @@ evalh = "eval_harness.cli.main:cli"
 [project.entry-points."eval_harness.system_adapters"]
 http            = "eval_harness.adapters.system.http_adapter:HttpSystemAdapter"
 python_function = "eval_harness.adapters.system.python_function_adapter:PythonFunctionAdapter"
+cli             = "eval_harness.adapters.system.cli_adapter:CliSystemAdapter"
 
 [project.entry-points."eval_harness.evaluators"]
 contains_text = "eval_harness.evaluators.contains_text:ContainsTextEvaluator"
