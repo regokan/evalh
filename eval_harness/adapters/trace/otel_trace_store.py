@@ -106,6 +106,14 @@ class OtelTraceStore:
 
     # ---- writes ---------------------------------------------------------
 
+    async def save_trace_idempotent(self, trace: Trace, cell_id: str) -> bool:
+        # OTel-shaped stores don't enforce idempotency themselves — duplicate
+        # spans are the operator's problem to dedupe in the backend. The
+        # canonical sink (local_files / sqlite / postgres) is where the
+        # contract lives. Always-write + report True.
+        await self.save_trace(trace)
+        return True
+
     async def save_trace(self, trace: Trace) -> None:
         tracer = self._tracer()
         start_ns = _to_ns(trace.started_at)

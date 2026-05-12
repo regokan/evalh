@@ -144,6 +144,10 @@ class WebhookTraceStore:
     async def save_trace(self, trace: Trace) -> None:
         return None
 
+    async def save_trace_idempotent(self, trace: Trace, cell_id: str) -> bool:
+        # Webhook reporting is summary-grained — no per-trace work to dedupe.
+        return True
+
     async def save_evaluation(
         self, case_id: str, variant: str, results: list[EvaluationResult]
     ) -> None:

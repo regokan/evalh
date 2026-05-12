@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import json
 import traceback
 from datetime import datetime
 from typing import Any, Literal
@@ -253,3 +255,55 @@ class FilesystemArtifact(BaseModel):
     after_manifest: FileManifest
     diff: FileDiff
     artifacts_path: str
+
+
+class CellDescriptor(BaseModel):
+    """v2: the unit of distribution.
+
+    The runner builds a `CellDescriptor` per (case, variant) cell and hands
+    it to the `Executor`. Workers REBUILD adapters / evaluators from
+    `eval_config_dict` via the existing factory + entry-point layer —
+    they do NOT receive serialized adapter instances. The pickle-the-
+    function path dies the moment custom-evaluator entry-points enter
+    the picture (the v0.1 plugin path), so it's not an option.
+    """
+
+    schema_version: str = "1.0"
+    cell_id: str
+    run_id: str
+    case_id: str
+    variant_name: str
+    # Stable hash over the JSON-canonical config slice that affects this
+    # cell (the variant's config + the evaluators touching it). Drives
+    # `cell_id` uniqueness and the trace-store idempotency check.
+    config_hash: str
+    # Full config dict the worker rebuilds adapters from. The worker's
+    # factory layer + the entry-point sets in its installed env are
+    # responsible for resolving names — config travels, code doesn't.
+    eval_config_dict: dict[str, Any]
+    # Full `EvalCase.model_dump()`. The worker re-validates via Pydantic.
+    case_dict: dict[str, Any]
+    workspace_kind: str | None = None
+    # Optional capacity-pool name; F2 (Local executor) reads this to
+    # route the cell to the matching semaphore. `None` means default pool.
+    pool: str | None = None
+
+
+def compute_cell_id(
+    *,
+    run_id: str,
+    case_id: str,
+    variant_name: str,
+    config_slice: dict[str, Any],
+) -> str:
+    """Deterministic `cell_id` for the dispatch primitive.
+
+    Format: ``{run_id}::{case_id}::{variant_name}::{config_hash[:12]}``.
+    `config_slice` should contain only the configuration that affects
+    this cell — typically the variant block + the evaluator blocks —
+    not the whole `eval.yaml`. Same inputs across machines hash to the
+    same id, which is what the trace-store idempotency check relies on.
+    """
+    canonical = json.dumps(config_slice, sort_keys=True, default=str)
+    config_hash = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+    return f"{run_id}::{case_id}::{variant_name}::{config_hash[:12]}"

@@ -41,9 +41,17 @@ CREATE TABLE IF NOT EXISTS {schema}.eval_traces (
     variant_name  TEXT NOT NULL,
     started_at    TIMESTAMPTZ NOT NULL,
     namespace     JSONB,
+    cell_id       TEXT,
+    error_type    TEXT,
     payload       JSONB NOT NULL,
     PRIMARY KEY (run_id, case_id, variant_name)
 );
+-- v2: idempotency keyed by `cell_id`. ADD COLUMN IF NOT EXISTS keeps
+-- the schema migration safe for existing v0.2 dbs.
+ALTER TABLE {schema}.eval_traces ADD COLUMN IF NOT EXISTS cell_id TEXT;
+ALTER TABLE {schema}.eval_traces ADD COLUMN IF NOT EXISTS error_type TEXT;
+CREATE INDEX IF NOT EXISTS eval_traces_cell_id_idx
+    ON {schema}.eval_traces (cell_id);
 
 CREATE TABLE IF NOT EXISTS {schema}.eval_results (
     run_id        TEXT NOT NULL,
@@ -149,18 +157,64 @@ class PostgresStore:
         async with pool.acquire() as conn:
             await conn.execute(
                 f"INSERT INTO {self.schema}.eval_traces "
-                f"(run_id, case_id, variant_name, started_at, namespace, payload) "
-                f"VALUES ($1, $2, $3, $4, $5::jsonb, $6::jsonb) "
+                f"(run_id, case_id, variant_name, started_at, namespace, "
+                f" cell_id, error_type, payload) "
+                f"VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7, $8::jsonb) "
                 f"ON CONFLICT (run_id, case_id, variant_name) "
                 f"DO UPDATE SET started_at = EXCLUDED.started_at, "
-                f"namespace = EXCLUDED.namespace, payload = EXCLUDED.payload",
+                f"namespace = EXCLUDED.namespace, "
+                f"cell_id = EXCLUDED.cell_id, "
+                f"error_type = EXCLUDED.error_type, "
+                f"payload = EXCLUDED.payload",
                 trace.run_id,
                 trace.case_id,
                 trace.variant_name,
                 trace.started_at,
                 self._namespace_blob,
+                None,
+                trace.error.type if trace.error else None,
                 trace.model_dump_json(),
             )
+
+    async def save_trace_idempotent(self, trace: Trace, cell_id: str) -> bool:
+        """v2 idempotency: insert with ON CONFLICT (cell_id) DO UPDATE
+        WHERE existing.error_type IS NOT NULL. A successful cell_id
+        record is preserved (no-op return False); an error-state record
+        gets overwritten (retry-after-crash returns True)."""
+        pool = self._require_pool()
+        async with pool.acquire() as conn:
+            existing_error_type = await conn.fetchval(
+                f"SELECT error_type FROM {self.schema}.eval_traces "
+                f"WHERE cell_id = $1 LIMIT 1",
+                cell_id,
+            )
+            if existing_error_type is None and await conn.fetchval(
+                f"SELECT 1 FROM {self.schema}.eval_traces "
+                f"WHERE cell_id = $1 LIMIT 1",
+                cell_id,
+            ):
+                return False
+            await conn.execute(
+                f"INSERT INTO {self.schema}.eval_traces "
+                f"(run_id, case_id, variant_name, started_at, namespace, "
+                f" cell_id, error_type, payload) "
+                f"VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7, $8::jsonb) "
+                f"ON CONFLICT (run_id, case_id, variant_name) "
+                f"DO UPDATE SET started_at = EXCLUDED.started_at, "
+                f"namespace = EXCLUDED.namespace, "
+                f"cell_id = EXCLUDED.cell_id, "
+                f"error_type = EXCLUDED.error_type, "
+                f"payload = EXCLUDED.payload",
+                trace.run_id,
+                trace.case_id,
+                trace.variant_name,
+                trace.started_at,
+                self._namespace_blob,
+                cell_id,
+                trace.error.type if trace.error else None,
+                trace.model_dump_json(),
+            )
+            return True
 
     async def save_evaluation(
         self,

@@ -111,6 +111,25 @@ class LocalFilesStore:
         async with self._traces_lock:
             await asyncio.to_thread(_append_text, run_dir / "traces.jsonl", line)
 
+    async def save_trace_idempotent(self, trace: Trace, cell_id: str) -> bool:
+        """v2 idempotency: per-cell sidecar marker at
+        ``runs/<id>/cells/<cell_id>.success.marker``. A successful
+        save writes the marker; a subsequent call sees the marker and
+        no-ops. A failed cell (trace.error != None) skips the marker so
+        a retry overwrites the previous error trace."""
+        run_dir = self._require_run_dir()
+        cells_dir = run_dir / "cells"
+        marker = cells_dir / f"{cell_id}.success.marker"
+        async with self._traces_lock:
+            if await asyncio.to_thread(marker.exists):
+                return False
+            await asyncio.to_thread(cells_dir.mkdir, parents=True, exist_ok=True)
+            line = trace.model_dump_json() + "\n"
+            await asyncio.to_thread(_append_text, run_dir / "traces.jsonl", line)
+            if trace.error is None:
+                await asyncio.to_thread(marker.write_text, cell_id + "\n")
+        return True
+
     async def save_evaluation(
         self,
         case_id: str,

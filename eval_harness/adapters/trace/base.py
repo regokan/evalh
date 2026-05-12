@@ -28,6 +28,18 @@ class TraceStore(Protocol):
 
     async def save_trace(self, trace: Trace) -> None: ...
 
+    async def save_trace_idempotent(self, trace: Trace, cell_id: str) -> bool:
+        """v2 idempotency contract — keyed by deterministic `cell_id`.
+
+        Returns True when the trace was written (or overwrites an existing
+        error-state record on retry), False when an existing successful
+        record for `cell_id` was found and the call was a no-op. The
+        canonical sinks (local_files, sqlite, postgres) provide real
+        implementations; other stores inherit the always-write fallback
+        (the idempotency contract is enforced at the canonical sink — see
+        ``docs/Adapters.md`` > "Trace store idempotency")."""
+        ...
+
     async def save_evaluation(
         self,
         case_id: str,

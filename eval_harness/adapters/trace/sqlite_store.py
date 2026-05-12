@@ -27,6 +27,8 @@ CREATE TABLE IF NOT EXISTS traces (
     variant_name  TEXT NOT NULL,
     started_at    TEXT NOT NULL,
     namespace     TEXT,
+    cell_id       TEXT,
+    error_type    TEXT,
     payload       TEXT NOT NULL,
     PRIMARY KEY (run_id, case_id, variant_name)
 );
@@ -118,11 +120,15 @@ class SqliteStore:
         await self._conn.commit()
 
     async def _ensure_namespace_columns(self) -> None:
-        """Add the ``namespace`` column to existing v0.1 databases.
+        """Add new columns to existing dbs created by earlier versions.
 
-        Older sqlite stores were created without it. ``ALTER TABLE ADD
-        COLUMN`` is the cheapest path SQLite supports; we check
-        ``PRAGMA table_info`` first so reopening a v0.2 db is a no-op.
+        - ``namespace`` (v0.2) on every table.
+        - ``cell_id`` + ``error_type`` (v2) on the traces table — drives
+          the idempotency contract via `save_trace_idempotent`.
+
+        ``ALTER TABLE ADD COLUMN`` is the cheapest path SQLite supports;
+        we check ``PRAGMA table_info`` first so reopening an up-to-date
+        db is a no-op.
         """
         assert self._conn is not None
         for table in ("traces", "results", "artifacts", "summaries"):
@@ -133,23 +139,67 @@ class SqliteStore:
                 await self._conn.execute(
                     f"ALTER TABLE {table} ADD COLUMN namespace TEXT"
                 )
+        # Traces-only columns for v2 idempotency.
+        cur = await self._conn.execute("PRAGMA table_info(traces)")
+        traces_cols = {row[1] async for row in cur}
+        await cur.close()
+        for col in ("cell_id", "error_type"):
+            if col not in traces_cols:
+                await self._conn.execute(
+                    f"ALTER TABLE traces ADD COLUMN {col} TEXT"
+                )
 
     async def save_trace(self, trace: Trace) -> None:
         conn = self._require_conn()
         await conn.execute(
             "INSERT OR REPLACE INTO traces "
-            "(run_id, case_id, variant_name, started_at, namespace, payload) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
+            "(run_id, case_id, variant_name, started_at, namespace, "
+            " cell_id, error_type, payload) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 trace.run_id,
                 trace.case_id,
                 trace.variant_name,
                 trace.started_at.isoformat(),
                 self._namespace_blob,
+                None,
+                trace.error.type if trace.error else None,
                 trace.model_dump_json(),
             ),
         )
         await conn.commit()
+
+    async def save_trace_idempotent(self, trace: Trace, cell_id: str) -> bool:
+        """v2 idempotency keyed by `cell_id`. No-op when a successful
+        record (error_type IS NULL) already exists; overwrite when the
+        existing record was an error (retry-after-crash path)."""
+        conn = self._require_conn()
+        cur = await conn.execute(
+            "SELECT error_type FROM traces WHERE cell_id = ? LIMIT 1",
+            (cell_id,),
+        )
+        row = await cur.fetchone()
+        await cur.close()
+        if row is not None and row[0] is None:
+            return False
+        await conn.execute(
+            "INSERT OR REPLACE INTO traces "
+            "(run_id, case_id, variant_name, started_at, namespace, "
+            " cell_id, error_type, payload) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                trace.run_id,
+                trace.case_id,
+                trace.variant_name,
+                trace.started_at.isoformat(),
+                self._namespace_blob,
+                cell_id,
+                trace.error.type if trace.error else None,
+                trace.model_dump_json(),
+            ),
+        )
+        await conn.commit()
+        return True
 
     async def save_evaluation(
         self,

@@ -534,6 +534,26 @@ class TraceStore(Protocol):
 
 Stores are independently swappable. You can run with `local_files` for development and `postgres` in CI without changing anything else.
 
+### Trace store idempotency (v2)
+
+The v2 dispatch primitive ([Executors.md](Executors.md)) uses deterministic `cell_id`s so retried cells can be detected at the sink. The Protocol gained an additive method:
+
+```python
+async def save_trace_idempotent(self, trace: Trace, cell_id: str) -> bool:
+    """Returns True if written, False if `cell_id` already had a successful record.
+    A previous error-state record is overwritten on retry."""
+```
+
+Three canonical sinks enforce the contract:
+
+| Sink | Mechanism |
+|---|---|
+| `local_files` | sidecar marker `runs/<id>/cells/<cell_id>.success.marker` written after a successful save; subsequent calls check the marker first |
+| `sqlite` | `traces.cell_id TEXT` column + `error_type` guard before UPSERT |
+| `postgres` | indexed `eval_traces.cell_id TEXT` + `ON CONFLICT … WHERE existing.error_type IS NOT NULL` |
+
+Other stores (otel, langfuse, phoenix, arize, braintrust, webhook) inherit the always-write fallback — the idempotency contract lives at the canonical sink (the first entry in `eval.yaml > output:`). Operators who want deduplication in their observability backend configure it there.
+
 ---
 
 ## WorkspaceAdapter

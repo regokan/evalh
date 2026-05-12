@@ -86,6 +86,11 @@ class BraintrustTraceStore:
         payload = _trace_to_braintrust(trace, run_id=self._run_id)
         await self._client.push_trace(payload)
 
+    async def save_trace_idempotent(self, trace: Trace, cell_id: str) -> bool:
+        # Idempotency lives on the canonical sink — Braintrust always-writes.
+        await self.save_trace(trace)
+        return True
+
     async def save_evaluation(
         self,
         case_id: str,
