@@ -4,6 +4,99 @@ All notable changes to this project are recorded here. Schema: per-release
 sections in reverse chronological order. v0.x lines map 1:1 to the spec
 in [`docs/Roadmap.md`](docs/Roadmap.md).
 
+## v1 — 2026-05-12
+
+**"It tests systems that mutate the world."** Coding agents, infra agents,
+anything that modifies a workspace.
+
+**New SystemAdapters**
+
+- `git_branch` — checks out a branch into a worktree, starts the
+  service from `start_command`, polls a healthcheck, then delegates
+  every call to a composed `inner_adapter` (typically `http`). The
+  unit of variation is a branch.
+- `docker` — same composition pattern, image instead of branch. Pulls
+  on missing, polls a healthcheck, stop+remove on exit. Sync docker
+  SDK calls wrapped with `asyncio.to_thread`.
+- `replay` — returns the `Trace` already embedded in the case by an
+  `embed_full_trace`-mode DatasetAdapter. No system call. The
+  evaluator pipeline runs against historical traffic.
+- `user_simulator` — wraps any inner adapter in a multi-turn
+  simulated-user loop driven by an `LlmBackend`.
+
+**Workspace**
+
+- `docker_volume` — sandboxed workspace. The system runs inside a
+  container with a single bind-mounted volume; nothing outside the
+  volume is visible. Security test: a container started by this
+  adapter MUST NOT be able to read the host's `$HOME/.ssh`.
+
+**DatasetAdapter**
+
+- `embed_full_trace` Protocol — adapters opt in to attaching the
+  source trace to each case. `fixture` (new) implements it for
+  offline tests; production platform adapters (langfuse, phoenix)
+  pick it up in v1-supplement.
+
+**New evaluators**
+
+- `git_diff` — asserts `must_modify_files` / `must_not_modify_files`
+  against `FilesystemArtifact.diff`; optional `expected_patch_path`
+  exact-string compare.
+- `command` — runs a subprocess (`shell=False`, `cwd='artifact'`
+  by default, bounded `timeout_seconds`, captured + capped output).
+- `semantic_similarity` — cosine similarity with a pluggable
+  embedder backend. NO default ships: install `[openai]` or
+  `[embeddings_local]`.
+- `thinking_tokens_under`, `thinking_present`, `thinking_does_not_leak`
+  — target the `output.thinking` field as a first-class evaluation
+  surface.
+
+**Core**
+
+- `eval_harness.core.llm_backends` — runner-shared LLM dispatch
+  registry. `LlmBackend` Protocol + `LlmCall` model with token /
+  cost fields. `llm_judge`, `user_simulator`, and
+  `thinking_does_not_leak` share one backend.
+- `eval_harness.core.price_tables` — versioned, dated `PriceTable`
+  with a `DEFAULT_PRICE_TABLE` (~5 current-gen models, source URLs
+  in comments). The runner fills `Trace.metrics.cost_usd` from the
+  table when adapters report tokens but not cost. User override via
+  `metrics.price_table_path`; the runner warns once per run when
+  the default is in use.
+
+**Embedder registry**
+
+- `eval_harness.evaluators._embedders` — shaped like `llm_backends`.
+  Two reference backends ship behind extras: `OpenAIEmbedder`
+  (`[openai]`) and `SentenceTransformersEmbedder`
+  (`[embeddings_local]`, NEW extra, ~80MB local model).
+
+**CLI**
+
+- `evalh inspect --case <id>` now renders the `FilesystemArtifact`
+  when present: diff summary table, per-file unified-diff bodies
+  (`rich.Syntax`, 200-line truncation by default), workspace
+  metadata. `--no-artifacts` skips even when present.
+
+**Examples**
+
+- `examples/coding_agent/` — Claude-Haiku patches a fixture repo;
+  `command` evaluator runs pytest in the artifact directory.
+  Smoke test (requires `ANTHROPIC_API_KEY`), not in CI.
+- `examples/online_eval/` — fixture DatasetAdapter + replay
+  SystemAdapter, fully offline. The shape works unchanged once
+  langfuse / phoenix adapters land.
+
+**Tests**
+
+- Three new SystemAdapters share lifecycle + trace-shape coverage
+  alongside `http` and `python_function`. New `@pytest.mark.docker`
+  marker for tests that need a reachable daemon; skipped cleanly
+  otherwise.
+- Three-branch coding-agent integration test exercises `git_branch`
+  concurrency and the per-variant rollup.
+
 ## v0.2 — 2026-05-12
 
 **Backends & streaming**
