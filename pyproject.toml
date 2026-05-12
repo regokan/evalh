@@ -72,6 +72,7 @@ python_function = "eval_harness.adapters.system.python_function_adapter:PythonFu
 cli             = "eval_harness.adapters.system.cli_adapter:CliSystemAdapter"
 replay          = "eval_harness.adapters.system.replay_adapter:ReplaySystemAdapter"
 git_branch      = "eval_harness.adapters.system.git_branch_adapter:GitBranchAdapter"
+docker          = "eval_harness.adapters.system.docker_adapter:DockerSystemAdapter"
 
 [project.entry-points."eval_harness.evaluators"]
 contains_text = "eval_harness.evaluators.contains_text:ContainsTextEvaluator"
@@ -135,6 +136,7 @@ addopts = "-ra --strict-markers"
 markers = [
   "integration: end-to-end tests that hit a real LLM (require ANTHROPIC_API_KEY)",
   "perf: long-running performance tests (e.g. 10K-case streaming aggregate)",
+  "docker: tests that require a reachable docker daemon (skipped otherwise)",
 ]
 
 [tool.ruff]
