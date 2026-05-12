@@ -6,66 +6,80 @@ from typing import Any
 import pytest
 
 from eval_harness.core.errors import ConfigError
+from eval_harness.core.llm_backends import (
+    LlmBackendParseError,
+    LlmCall,
+    llm_backend_registry,
+)
 from eval_harness.core.models import EvalCase, ExpectedBehavior, Trace, TraceOutput
 from eval_harness.core.time import utc_now
-from eval_harness.evaluators._judge_backends import (
-    JudgeBackend,
-    JudgeParseError,
-    judge_backend_registry,
-)
 from eval_harness.evaluators.llm_judge import LlmJudgeEvaluator
 
 
 class _FakeBackend:
-    """Stub JudgeBackend: returns a canned response, records calls."""
+    """Stub LlmBackend: reads canned response from the holder at generate time."""
 
-    def __init__(self, model: str, *, response: dict[str, Any] | None = None,
-                 raise_on_judge: Exception | None = None) -> None:
-        self.model = model
-        self.response = response or {}
-        self.raise_on_judge = raise_on_judge
+    def __init__(self, holder: dict[str, Any]) -> None:
+        self._holder = holder
         self.calls: list[dict[str, Any]] = []
 
-    async def judge(
+    async def generate(
         self,
         prompt: str,
-        schema: dict[str, Any],
+        *,
+        model: str,
         max_tokens: int,
-    ) -> dict[str, Any]:
-        self.calls.append({"prompt": prompt, "schema": schema, "max_tokens": max_tokens})
-        if self.raise_on_judge is not None:
-            raise self.raise_on_judge
-        return self.response
+        system: str | None = None,
+        schema: dict[str, Any] | None = None,
+        cost_limit_usd: float | None = None,
+    ) -> LlmCall:
+        self.calls.append(
+            {
+                "prompt": prompt,
+                "model": model,
+                "max_tokens": max_tokens,
+                "schema": schema,
+                "cost_limit_usd": cost_limit_usd,
+            }
+        )
+        raise_on_call = self._holder.get("raise_on_call")
+        if raise_on_call is not None:
+            raise raise_on_call
+        return LlmCall(
+            structured=self._holder.get("response"),
+            token_input=self._holder.get("token_input", 0),
+            token_output=self._holder.get("token_output", 0),
+            cost_usd=self._holder.get("cost_usd", 0.0),
+        )
 
 
 @pytest.fixture
-def fake_claude_backend() -> Iterator[dict[str, _FakeBackend | None]]:
-    """Registers a stub factory under prefix 'claude'; restores prior state.
+def fake_claude_backend() -> Iterator[dict[str, Any]]:
+    """Registers a stub under prefix 'claude'; restores prior state.
 
-    Yields a one-element holder so tests can read the most recently constructed
-    fake backend (and the test mutates `holder["response"]` etc. before evaluate
-    runs).
+    Yields a holder; tests mutate `holder["response"]` (or `raise_on_call`,
+    token counts) and the fake reads it at generate time, so the singleton
+    backend can serve different responses across evaluators.
     """
-    holder: dict[str, Any] = {"backend": None, "response": {}, "raise_on_judge": None}
-    prior = judge_backend_registry._factories.get("claude")
+    holder: dict[str, Any] = {
+        "backend": None,
+        "response": {},
+        "raise_on_call": None,
+        "token_input": 0,
+        "token_output": 0,
+        "cost_usd": 0.0,
+    }
+    prior_factories = dict(llm_backend_registry._factories)
+    prior_instances = dict(llm_backend_registry._instances)
 
-    def factory(model: str) -> JudgeBackend:
-        b = _FakeBackend(
-            model,
-            response=holder.get("response"),
-            raise_on_judge=holder.get("raise_on_judge"),
-        )
-        holder["backend"] = b
-        return b
-
-    judge_backend_registry.register("claude", factory)
+    backend = _FakeBackend(holder)
+    holder["backend"] = backend
+    llm_backend_registry.register("claude", lambda: backend)
     try:
         yield holder
     finally:
-        if prior is None:
-            judge_backend_registry.unregister("claude")
-        else:
-            judge_backend_registry.register("claude", prior)
+        llm_backend_registry._factories = prior_factories
+        llm_backend_registry._instances = prior_instances
 
 
 def _case() -> EvalCase:
@@ -120,7 +134,7 @@ def test_validate_rejects_unknown_model_prefix(fake_claude_backend: dict[str, An
         LlmJudgeEvaluator(
             name="x", model="gpt-5", nl_assertions=["a"], pass_when="all"
         )
-    assert "gpt" in str(exc.value).lower() or "no judge backend" in str(exc.value).lower()
+    assert "gpt" in str(exc.value).lower() or "no backend" in str(exc.value).lower()
 
 
 async def test_pass_when_all_passes(fake_claude_backend: dict[str, Any]) -> None:
@@ -255,12 +269,12 @@ async def test_malformed_judge_json_yields_error_result(
 async def test_judge_raises_yields_error_result(
     fake_claude_backend: dict[str, Any],
 ) -> None:
-    fake_claude_backend["raise_on_judge"] = JudgeParseError("boom")
+    fake_claude_backend["raise_on_call"] = LlmBackendParseError("boom")
     ev = LlmJudgeEvaluator(name="q", model="claude-4-7", nl_assertions=["a"])
     result = await ev.evaluate(_case(), _trace(), None)
     assert result.passed is False
     assert result.error is not None
-    assert "JudgeParseError" in (result.error.message or "")
+    assert "LlmBackendParseError" in (result.error.message or "")
 
 
 async def test_cost_limit_blocks_call(fake_claude_backend: dict[str, Any]) -> None:
@@ -354,14 +368,16 @@ def test_evaluator_factory_registers_llm_judge() -> None:
     assert "llm_judge" in evaluator_factory.registry.names()
 
 
-def test_judge_backend_registry_loads_anthropic_entry_point() -> None:
+def test_llm_backend_registry_loads_anthropic_entry_point() -> None:
     # Importing the evaluators package triggers load_entry_points().
     import eval_harness.evaluators  # noqa: F401
 
-    assert "claude" in judge_backend_registry.names()
+    assert "claude" in llm_backend_registry.names()
 
 
-def test_anthropic_backend_raises_configerror_if_sdk_missing(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_anthropic_backend_raises_configerror_if_sdk_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     import builtins
     import importlib
 
@@ -377,11 +393,9 @@ def test_anthropic_backend_raises_configerror_if_sdk_missing(monkeypatch: pytest
 
     monkeypatch.setattr(builtins, "__import__", fake_import)
     mod = importlib.reload(
-        importlib.import_module(
-            "eval_harness.evaluators._judge_backends.anthropic_backend"
-        )
+        importlib.import_module("eval_harness.core.llm_backends.anthropic")
     )
     with pytest.raises(ConfigError) as exc:
-        mod.AnthropicJudgeBackend("claude-4-7")
+        mod.AnthropicLlmBackend()
     assert "anthropic" in str(exc.value).lower()
     assert "eval-harness[anthropic]" in str(exc.value)

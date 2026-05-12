@@ -1,4 +1,4 @@
-"""Coarse per-model pricing for the `cost_limit_usd` guard.
+"""Coarse per-model pricing for `cost_limit_usd` guards.
 
 Intentionally imprecise (v0 has no shared cost table). Single safety net per
 call; updates are PR-by-PR.

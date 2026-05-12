@@ -8,6 +8,11 @@ from typing import Any, ClassVar
 from jsonpath_ng import parse as jsonpath_parse
 
 from eval_harness.core.errors import ConfigError
+from eval_harness.core.llm_backends import LlmBackend, llm_backend_registry
+from eval_harness.core.llm_backends._pricing import (
+    estimate_cost_usd,
+    estimate_tokens_from_text,
+)
 from eval_harness.core.models import (
     EvalCase,
     EvaluationResult,
@@ -16,14 +21,6 @@ from eval_harness.core.models import (
     TraceError,
 )
 from eval_harness.core.time import utc_now
-from eval_harness.evaluators._judge_backends import (
-    JudgeBackend,
-    judge_backend_registry,
-)
-from eval_harness.evaluators._judge_backends._pricing import (
-    estimate_cost_usd,
-    estimate_tokens_from_text,
-)
 from eval_harness.evaluators.base import Evaluator
 
 _DEFAULT_INCLUDE = ["input", "output.final_answer"]
@@ -107,7 +104,7 @@ class LlmJudgeEvaluator(Evaluator):
         self._max_tokens: int = int(config.get("max_tokens", _DEFAULT_MAX_TOKENS))
 
         # Resolve backend at plan time so a missing SDK fails before any case runs.
-        self._backend: JudgeBackend = judge_backend_registry.resolve(model)
+        self._backend: LlmBackend = llm_backend_registry.resolve(model)
 
     async def evaluate(
         self,
@@ -147,7 +144,13 @@ class LlmJudgeEvaluator(Evaluator):
                 )
 
         try:
-            judge_response = await self._backend.judge(prompt, schema, self._max_tokens)
+            call = await self._backend.generate(
+                prompt,
+                model=self._model,
+                max_tokens=self._max_tokens,
+                schema=schema,
+                cost_limit_usd=self._cost_limit_usd,
+            )
         except Exception as e:
             return _error_result(
                 self,
@@ -157,6 +160,20 @@ class LlmJudgeEvaluator(Evaluator):
                 type_="adapter_error",
                 message=f"judge call failed: {type(e).__name__}: {e}",
                 stack=traceback.format_exc(),
+            )
+
+        judge_response = call.structured
+        if not isinstance(judge_response, dict):
+            return _error_result(
+                self,
+                case,
+                trace,
+                started,
+                type_="adapter_error",
+                message=(
+                    "judge response missing structured payload "
+                    f"(text: {call.text[:200]!r})"
+                ),
             )
 
         try:
@@ -180,12 +197,11 @@ class LlmJudgeEvaluator(Evaluator):
             )
 
         detail["judge_model"] = self._model
-        usage = judge_response.get("_usage") if isinstance(judge_response, dict) else None
-        if isinstance(usage, dict):
-            actual = estimate_cost_usd(
-                self._model,
-                int(usage.get("input_tokens", 0)),
-                int(usage.get("output_tokens", 0)),
+        if call.token_input or call.token_output:
+            actual = (
+                call.cost_usd
+                if call.cost_usd > 0
+                else estimate_cost_usd(self._model, call.token_input, call.token_output)
             )
             detail["cost_usd"] = round(actual, 6)
             if self._cost_limit_usd is not None and actual > self._cost_limit_usd:

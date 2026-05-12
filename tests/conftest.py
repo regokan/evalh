@@ -7,24 +7,22 @@ from typing import Any
 
 import pytest
 
-from eval_harness.evaluators._judge_backends import (
-    JudgeBackend,
-    judge_backend_registry,
-)
+from eval_harness.core.llm_backends import LlmCall, llm_backend_registry
 
 _ASSERTION_LINE_RE = re.compile(r"^\d+\.\s+\(")
 
 
-class _FakeJudgeBackend:
-    def __init__(self, model_name: str) -> None:
-        self.model_name = model_name
-
-    async def judge(
+class _FakeLlmBackend:
+    async def generate(
         self,
         prompt: str,
-        schema: dict[str, Any],
+        *,
+        model: str,
         max_tokens: int,
-    ) -> dict[str, Any]:
+        system: str | None = None,
+        schema: dict[str, Any] | None = None,
+        cost_limit_usd: float | None = None,
+    ) -> LlmCall:
         response: dict[str, Any] = {}
         properties = schema.get("properties", {}) if isinstance(schema, dict) else {}
         if "assertions" in properties:
@@ -36,22 +34,22 @@ class _FakeJudgeBackend:
         if "score" in properties:
             response["score"] = 5.0
             response["rubric_reason"] = "fake-pass"
-        return response
-
-
-def _fake_factory(model_name: str) -> JudgeBackend:
-    return _FakeJudgeBackend(model_name)
+        return LlmCall(structured=response)
 
 
 @pytest.fixture
 def fake_judge_backend() -> Iterator[None]:
-    prior = dict(judge_backend_registry._factories)
-    judge_backend_registry.register("claude", _fake_factory)
-    judge_backend_registry.register("gpt", _fake_factory)
+    prior_factories = dict(llm_backend_registry._factories)
+    prior_instances = dict(llm_backend_registry._instances)
+    backend = _FakeLlmBackend()
+    llm_backend_registry.register("claude", lambda: backend)
+    llm_backend_registry.register("gpt", lambda: backend)
     try:
         yield None
     finally:
-        judge_backend_registry._factories = prior
+        llm_backend_registry._factories = prior_factories
+        llm_backend_registry._instances = prior_instances
+
 
 @pytest.fixture(autouse=True)
 def deterministic_rng() -> Iterator[None]:

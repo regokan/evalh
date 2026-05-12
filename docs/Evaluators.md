@@ -245,9 +245,13 @@ The `llm_judge` evaluator dispatches by model name to a provider backend. Backen
 |---|---|---|
 | `claude-*` | Anthropic | `pip install 'eval-harness[anthropic]'` |
 | `gpt-*` | OpenAI | `pip install 'eval-harness[openai]'` (lands when implemented) |
-| custom | your own | register via `eval_harness.judge_backends` entry-point |
+| custom | your own | register via `eval_harness.llm_backends` entry-point |
 
 If you reference a model whose backend isn't installed, the run aborts at plan time with a clear error pointing at the right extra. This is deliberate — silently picking a different model would be worse than a load-time failure.
+
+Backends implement the `LlmBackend` protocol from `eval_harness.core.llm_backends` — a single `async generate(prompt, *, model, max_tokens, system=None, schema=None, cost_limit_usd=None) -> LlmCall`. This is shared with the v1 user-simulator and `thinking_does_not_leak` evaluator, so a backend you write once works across all three.
+
+The legacy `eval_harness.judge_backends` entry-point group is still discovered for backwards compatibility — backends registered there are auto-wrapped to the new `LlmBackend` shape. New code should register under `eval_harness.llm_backends`.
 
 ### Why these three for v0
 
