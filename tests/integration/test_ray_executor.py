@@ -401,15 +401,20 @@ def test_worker_run_cell_sync_rebuilds_adapters_from_config() -> None:
 # ---- @pytest.mark.ray: real local-cluster smoke -----------------------------
 
 
+_RAY_INIT_ERROR: str | None = None
+
+
 def _ray_init_works() -> bool:
-    """Probe ``ray.init`` once. If it fails (broken environment, port
-    already taken), the @pytest.mark.ray block fails loudly per the
-    bead's gate — we still skip cleanly when [ray] isn't installed.
+    """Probe ``ray.init`` once. Captures the failure reason into
+    ``_RAY_INIT_ERROR`` so the @pytest.mark.ray gate surfaces it in
+    the test output — swallowing the exception silently masks real
+    bugs (ev-bkz).
 
     ``runtime_env.working_dir`` ships the stub-agent fixture directory
     to workers so the python_function adapter's ``module:func`` target
     resolves in the worker subprocess. eval-harness itself is pip-
     installed so workers find it through the inherited site-packages."""
+    global _RAY_INIT_ERROR
     try:
         if not ray.is_initialized():
             ray.init(
@@ -424,7 +429,8 @@ def _ray_init_works() -> bool:
                 object_store_memory=78_643_200,
             )
         return True
-    except Exception:
+    except Exception as e:
+        _RAY_INIT_ERROR = f"{type(e).__name__}: {e}"
         return False
 
 
@@ -436,9 +442,10 @@ async def test_ray_executor_dispatch_end_to_end_via_local_ray() -> None:
     contract works with the real Ray runtime, not just the test seam."""
     if not _ray_init_works():
         pytest.fail(
-            "ray installed but ray.init() failed — see logs above. "
-            "Mirrors the docker_volume v1 gate: fail loudly when the "
-            "runtime is broken so we don't false-green on a real bug."
+            "ray installed but ray.init() failed: "
+            f"{_RAY_INIT_ERROR}. Mirrors the docker_volume v1 gate: fail "
+            "loudly when the runtime is broken so we don't false-green "
+            "on a real bug."
         )
     _install_stub_agent()
     case_ids = [f"c{i}" for i in range(10)]
@@ -471,7 +478,11 @@ async def test_ray_worker_rebuilds_evaluators_from_entry_points() -> None:
     real Ray worker, assert the worker resolved the name from the
     entry-point registry on its own end."""
     if not _ray_init_works():
-        pytest.fail("ray installed but ray.init() failed; see test_ray_executor_dispatch_end_to_end_via_local_ray for details.")
+        pytest.fail(
+            f"ray installed but ray.init() failed: {_RAY_INIT_ERROR}; "
+            "see test_ray_executor_dispatch_end_to_end_via_local_ray "
+            "for details."
+        )
     _install_stub_agent()
     # Cell config wires a `contains_text` evaluator — the worker has to
     # build it from the entry-point registry. The stub agent always
