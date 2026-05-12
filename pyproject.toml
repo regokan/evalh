@@ -31,6 +31,7 @@ dependencies = [
   "rich>=13,<14",
   "jsonpath-ng>=1.6,<2",
   "python-dotenv>=1,<2",
+  "jsonschema (>=4,<5)",
 ]
 
 [project.optional-dependencies]
@@ -75,6 +76,9 @@ contains_text = "eval_harness.evaluators.contains_text:ContainsTextEvaluator"
 tool_called   = "eval_harness.evaluators.tool_called:ToolCalledEvaluator"
 llm_judge     = "eval_harness.evaluators.llm_judge:LlmJudgeEvaluator"
 exact_match   = "eval_harness.evaluators.exact_match:ExactMatchEvaluator"
+schema_match  = "eval_harness.evaluators.schema_match:SchemaMatchEvaluator"
+latency_under = "eval_harness.evaluators.latency_under:LatencyUnderEvaluator"
+cost_under    = "eval_harness.evaluators.cost_under:CostUnderEvaluator"
 
 [project.entry-points."eval_harness.dataset_adapters"]
 yaml  = "eval_harness.adapters.dataset.yaml_dataset_adapter:YamlDatasetAdapter"
