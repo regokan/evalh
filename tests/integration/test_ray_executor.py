@@ -193,6 +193,57 @@ def test_num_cpus_and_gpus_forwarded_to_remote() -> None:
     assert fake_ray.init_calls == 1
 
 
+def test_object_store_memory_default_is_forwarded_to_ray_init() -> None:
+    """GHA's ``/dev/shm`` defaults to ~64 MiB; Ray's auto-sized 2 GiB
+    plasma store crashes ``ray.init`` there. The executor's default
+    ``object_store_memory=78_643_200`` (~75 MiB) is the CI-safe value
+    that fits inside GHA's shm; real-cluster runs override it."""
+    fake_ray = _FakeRayModule()
+    exec_ = RayExecutor(ray_module=fake_ray, address=None)
+    plan = _build_plan(["c1"])
+
+    import asyncio as _asyncio
+
+    async def _drive() -> None:
+        async with exec_:
+            await exec_.open(plan)
+
+    _asyncio.run(_drive())
+    assert fake_ray.init_kwargs.get("object_store_memory") == 78_643_200
+
+
+def test_object_store_memory_override_forwarded_to_ray_init() -> None:
+    """Production callers override the CI default. ``None`` is the
+    sentinel that means 'let Ray auto-size' — the executor must NOT
+    forward ``object_store_memory`` to ``ray.init`` in that case."""
+    fake_ray = _FakeRayModule()
+    exec_ = RayExecutor(
+        ray_module=fake_ray, address=None, object_store_memory=4_000_000_000
+    )
+    plan = _build_plan(["c1"])
+
+    import asyncio as _asyncio
+
+    async def _drive() -> None:
+        async with exec_:
+            await exec_.open(plan)
+
+    _asyncio.run(_drive())
+    assert fake_ray.init_kwargs.get("object_store_memory") == 4_000_000_000
+
+    fake_ray2 = _FakeRayModule()
+    exec2 = RayExecutor(
+        ray_module=fake_ray2, address=None, object_store_memory=None
+    )
+
+    async def _drive2() -> None:
+        async with exec2:
+            await exec2.open(plan)
+
+    _asyncio.run(_drive2())
+    assert "object_store_memory" not in fake_ray2.init_kwargs
+
+
 # ---- dispatch via a fake Ray module -----------------------------------------
 
 
@@ -368,6 +419,9 @@ def _ray_init_works() -> bool:
                 ignore_reinit_error=True,
                 configure_logging=False,
                 runtime_env={"working_dir": str(_STUB_DIR)},
+                # Mirror the RayExecutor default — GHA's /dev/shm is ~64 MiB
+                # so Ray's auto-sized 2 GiB plasma store crashes the boot.
+                object_store_memory=78_643_200,
             )
         return True
     except Exception:

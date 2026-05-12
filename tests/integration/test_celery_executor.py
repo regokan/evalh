@@ -191,10 +191,19 @@ class _FakeAsyncResult:
     def __init__(self, payload: dict[str, Any]) -> None:
         self._payload = payload
 
-    def get(self, timeout: int | None = None) -> dict[str, Any]:
+    def get(
+        self,
+        timeout: int | None = None,
+        *,
+        disable_sync_subtasks: bool = True,
+        **_extra: Any,
+    ) -> dict[str, Any]:
         # Real Celery returns whatever the worker computed; for the fake
         # we run the same shared worker entrypoint synchronously so the
-        # round-trip shape matches.
+        # round-trip shape matches. ``disable_sync_subtasks`` mirrors the
+        # real AsyncResult signature so the executor can pass the
+        # ``disable_sync_subtasks=False`` escape hatch (Celery 5.6's
+        # task_join_will_block check) without exploding the fake.
         return worker_run_cell_sync(self._payload)
 
 

@@ -61,6 +61,14 @@ class RayExecutor:
     - ``num_cpus_per_cell`` (int, default 1): per-task resource request.
     - ``num_gpus_per_cell`` (float | None): forwarded to ``ray.remote``
       when set.
+    - ``object_store_memory`` (int, default 78 643 200 ≈ 75 MiB):
+      forwarded to ``ray.init``. The default is sized for GitHub Actions
+      runners whose ``/dev/shm`` defaults to ~64 MiB; Ray's normal
+      auto-sizing tries to grab 2 GiB of plasma store on Linux and
+      crashes ``ray.init`` on a tiny ``/dev/shm``. Real-cluster runs
+      should override this with a production value (Ray's normal
+      default is ``None`` = auto-size); the executor is faithful about
+      forwarding whatever the caller sets.
     - ``ray_module`` (Any, test seam): a stand-in for the real ``ray``
       module. Production callers leave this ``None``; tests inject a
       fake exposing ``init``, ``shutdown``, ``remote``, and ``get``.
@@ -73,6 +81,7 @@ class RayExecutor:
         runtime_env: dict[str, Any] | None = None,
         num_cpus_per_cell: int = 1,
         num_gpus_per_cell: float | None = None,
+        object_store_memory: int | None = 78_643_200,
         ray_module: Any | None = None,
         **_extra: Any,
     ) -> None:
@@ -91,6 +100,7 @@ class RayExecutor:
         self._runtime_env = dict(runtime_env) if runtime_env else None
         self._num_cpus_per_cell = int(num_cpus_per_cell)
         self._num_gpus_per_cell = num_gpus_per_cell
+        self._object_store_memory = object_store_memory
 
         # Per-run state.
         self._plan: RunPlan | None = None
@@ -148,6 +158,8 @@ class RayExecutor:
                 init_kwargs["address"] = self._address
             if self._runtime_env is not None:
                 init_kwargs["runtime_env"] = self._runtime_env
+            if self._object_store_memory is not None:
+                init_kwargs["object_store_memory"] = self._object_store_memory
             await asyncio.to_thread(self._ray.init, **init_kwargs)
             self._we_initialised_ray = True
 

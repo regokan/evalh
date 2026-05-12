@@ -187,8 +187,16 @@ class CeleryExecutor:
     async def await_outcome(self, handle: Any) -> CellOutcome:
         """Block (async) until the Celery task completes. ``AsyncResult.get``
         is sync + blocking; we run it in a thread to keep the event loop
-        responsive."""
-        raw = await asyncio.to_thread(handle.get, timeout=self._timeout)
+        responsive AND to pass Celery 5.6's ``task_join_will_block`` check,
+        which refuses ``.get()`` calls made from a thread carrying an active
+        asyncio loop. ``disable_sync_subtasks=False`` is the documented
+        escape hatch for the related in-process worker scenario the tests
+        exercise (orchestrator + embedded worker share a process)."""
+        raw = await asyncio.to_thread(
+            handle.get,
+            timeout=self._timeout,
+            disable_sync_subtasks=False,
+        )
         return self._outcome_from_dict(raw)
 
     async def await_all(self, handles: list[Any]) -> list[CellOutcome]:
