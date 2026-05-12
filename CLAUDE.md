@@ -197,5 +197,5 @@ You don't fork eval-harness — you install it. Custom adapters and evaluators (
 - [Observability.md](docs/Observability.md) — Langfuse / Phoenix / Arize / OTel integration; the three patterns
 - [Concurrency.md](docs/Concurrency.md) — async runner, semaphores, lifecycle, failure isolation
 - [RepositoryStructure.md](docs/RepositoryStructure.md) — full directory layout
-- [CI.md](docs/CI.md) — GitHub Actions recipe + reference workflow at [`templates/eval.yml`](templates/eval.yml)
+- [CI.md](docs/CI.md) — GitHub Actions recipes: PR-comment workflow at [`templates/eval.yml`](templates/eval.yml); daily drift-alert workflow at [`templates/eval-daily.yml`](templates/eval-daily.yml)
 - [Roadmap.md](docs/Roadmap.md) — v0, v0.1, v1, future

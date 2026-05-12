@@ -176,8 +176,109 @@ flag in v0.2; until then, an inline Python check is the right shape.
 
 ---
 
+## Scheduled runs with drift alerts
+
+The PR-comment workflow above is *event-driven*: it fires when a contributor
+opens or updates a pull request. A different question — "did anything regress
+overnight without anyone shipping a change?" — needs a *time-driven* workflow.
+`templates/eval-daily.yml` is the recipe for that loop.
+
+```mermaid
+flowchart LR
+    CRON[cron: daily] --> R[evalh run]
+    R --> RUN[runs/&lt;new&gt;/]
+    RUN --> D[evalh drift]
+    BASE[runs/baselines/&lt;eval&gt;/<br/>symlink, from `evalh promote`] -. read .-> D
+    D --> Y[runs/&lt;new&gt;/drift.yaml]
+    R -. webhook sink in output: .-> CHAT[Slack / Discord / Linear]
+    D -- exit 1 on regression --> FAIL[GitHub job fails<br/>+ artifact uploaded]
+```
+
+### What's involved
+
+- **`evalh drift`** ([CLI.md → Drift detection](CLI.md#drift-detection)) reads
+  the baseline symlink at `runs/baselines/<eval_name>/`, compares the new run
+  to it via the shared delta primitives, and writes a structured
+  `ComparisonReport(kind='drift')` to `runs/<id>/drift.yaml`. The
+  `--exit-nonzero-on-regression` flag fails the GitHub job when any
+  regression case is present — the drift.yaml is still persisted on the
+  failure path so the run dir always carries the report.
+- **Webhook TraceStore** (a `type: webhook` entry in `eval.yaml > output:`)
+  POSTs a summary message to Slack / Discord / Linear at run finalize time.
+  When the run's summary carries `comparison.kind='drift'`, the webhook
+  message highlights the top regression case IDs and the pass-rate Δ.
+  Slack + Discord use plain HTTPS POST (no SDK); Linear needs the
+  `[webhook]` extra for its GraphQL `createComment` SDK call.
+- **`evalh promote`** ([CLI.md → Drift detection](CLI.md#drift-detection))
+  designates a run as the new baseline: an atomic symlink at
+  `runs/baselines/<eval_name>/`. Promote when a run is green and you want
+  tomorrow's drift report measured against it.
+
+### Recipe
+
+The full workflow is in [`templates/eval-daily.yml`](../templates/eval-daily.yml).
+Copy it into your repo at `.github/workflows/eval-daily.yml` and adapt the
+`EVAL_CONFIG`, `RUNS_DIR`, and chat-tool secret. The skeleton:
+
+```yaml
+on:
+  schedule:
+    - cron: "0 7 * * *"     # 07:00 UTC daily
+  workflow_dispatch:
+
+jobs:
+  eval:
+    runs-on: ubuntu-latest
+    env:
+      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.13" }
+      - run: pip install "eval-harness[anthropic,webhook]"
+      - run: evalh run evals/configs/myeval.yaml
+      - run: evalh drift "$NEW_RUN" --exit-nonzero-on-regression
+```
+
+…where the `eval.yaml` carries the webhook sink alongside `local_files`:
+
+```yaml
+output:
+  - type: local_files
+    path: evals/runs/
+  - type: webhook            # secondary sink — failure-soft via RunSummary.sink_errors
+    platform: slack
+    url: ${SLACK_WEBHOOK_URL}
+```
+
+Two-sink output means the chat ping happens regardless of whether the drift
+step fails — Slack sees the run summary, and the GitHub job failure surfaces
+the regression separately. If you want chat to ping ONLY on regression, drop
+the webhook sink and rely on GitHub's standard failure notifications.
+
+### Tuning
+
+- **Cron cadence**: `"0 7 * * *"` for daily; `"0 7 * * 1"` for Monday-only.
+  Mind your team's working hours.
+- **Concurrency**: `cancel-in-progress: false` (the template's default) so
+  the previous day's run can finish before today's starts.
+- **Promotion cadence**: a green daily run isn't automatically promoted — the
+  drift baseline only moves when you run `evalh promote runs/<id>`. Typical
+  flow: a release-cut workflow promotes the post-release run as the new
+  baseline; nightly drift then measures against that release.
+
+### Out of scope (today)
+
+- Auto-promotion on green runs. Promotion is a deliberate human decision
+  in v1.x; the drift CLI's structured `drift.yaml` is what release tooling
+  reads.
+- Drift across more than two runs (rolling window). The shared delta
+  primitives in `eval_harness.runner._deltas` are pair-shaped today.
+
+---
+
 ## Where to go next
 
-- [CLI.md](CLI.md) — full command reference for `evalh run` / `inspect` / `compare`
+- [CLI.md](CLI.md) — full command reference for `evalh run` / `inspect` / `compare` / `promote` / `drift`
 - [RepositoryStructure.md](RepositoryStructure.md) — how to lay out a consumer repo so the workflow finds everything
 - [ConfigSchema.md](ConfigSchema.md) — `eval.yaml` field reference; `${VAR}` expansion lives here

@@ -1,0 +1,125 @@
+# Reference GitHub Actions workflow for scheduled eval-harness runs with
+# drift alerts.
+#
+# Copy this file into your repo at .github/workflows/eval-daily.yml. The
+# loop is:
+#
+#   1. `evalh run`           → produces a new run dir under evals/runs/
+#   2. `evalh drift`         → compares against the promoted baseline,
+#                              writes evals/runs/<id>/drift.yaml, exits
+#                              non-zero when regressions appear
+#   3. webhook TraceStore    → POSTs a drift-aware summary to Slack /
+#                              Discord / Linear; the runner persists the
+#                              webhook output as a secondary sink in
+#                              `output:` (see CONFIG_WITH_WEBHOOK below)
+#
+# Re-promote the baseline when the run is good:  `evalh promote evals/runs/<id>`.
+#
+# Prerequisites in your repo's Settings → Secrets and variables → Actions:
+#   - ANTHROPIC_API_KEY        (if your judge / system uses Anthropic)
+#   - AGENT_API_KEY            (if your system_under_test is an authenticated HTTP service)
+#   - SLACK_WEBHOOK_URL        (or DISCORD_WEBHOOK_URL / LINEAR_API_KEY — choose one)
+#
+# Read docs/CI.md > "Scheduled runs with drift alerts" for the recipe
+# walk-through.
+
+name: eval-daily
+
+on:
+  schedule:
+    # 07:00 UTC every day. Tune to your team's working hours so the
+    # Slack ping lands at the start of the day. GitHub may delay scheduled
+    # jobs by minutes during peak load; that's fine for daily evals.
+    - cron: "0 7 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: evalh-daily
+  cancel-in-progress: false  # let yesterday's run finish before today's starts
+
+jobs:
+  eval:
+    runs-on: ubuntu-latest
+    env:
+      # TODO: point at the eval config you want CI to run.
+      EVAL_CONFIG: evals/configs/listing_price.yaml
+      # Where each `evalh run` parks its output. The drift CLI reads
+      # `<RUNS_DIR>/baselines/<eval_name>/` to find the promoted baseline.
+      RUNS_DIR: evals/runs
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      AGENT_API_KEY: ${{ secrets.AGENT_API_KEY }}
+      # Pick ONE of these per your team's chat tool. The webhook
+      # TraceStore reads the URL from your eval.yaml's `output:` block;
+      # the workflow exports the secret so the YAML's `${SLACK_WEBHOOK_URL}`
+      # placeholder resolves at load.
+      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+      # DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+      # LINEAR_API_KEY: ${{ secrets.LINEAR_API_KEY }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install eval-harness + extras
+        run: |
+          # TODO: pick the extras you actually use. `[webhook]` is needed
+          # for the Linear sink only; Slack + Discord need no extra (httpx
+          # is in core). `[langfuse]` / `[phoenix]` / `[otel]` only if you
+          # use those platform adapters.
+          pip install "eval-harness[anthropic,webhook]"
+
+      - name: Run eval
+        # `evalh run` writes one run dir under $RUNS_DIR; the eval.yaml's
+        # `output:` block decides which sinks are active for that run. To
+        # post a webhook on every run regardless of drift, add a secondary
+        # `webhook` sink alongside `local_files` in the eval.yaml:
+        #
+        #   output:
+        #     - type: local_files
+        #       path: ${RUNS_DIR}
+        #     - type: webhook
+        #       platform: slack
+        #       url: ${SLACK_WEBHOOK_URL}
+        #
+        # If you ONLY want a chat ping on regression, omit the webhook
+        # sink and rely on the `evalh drift` step below to fail the job
+        # — your existing GitHub failure notifications will fire.
+        run: evalh run $EVAL_CONFIG
+
+      - name: Resolve new run dir
+        id: run-dir
+        # `evalh run` doesn't print the run dir in a stable shape; the
+        # newest mtime under $RUNS_DIR (excluding the `baselines/`
+        # marker dir) is the run we just produced. Stable across
+        # parallel CI runs because of the `concurrency: cancel-in-progress:
+        # false` gate above.
+        run: |
+          NEW_RUN=$(find "$RUNS_DIR" -mindepth 1 -maxdepth 1 -type d \
+              -not -name baselines -printf '%T@ %p\n' \
+              | sort -rn | head -1 | cut -d' ' -f2-)
+          echo "path=$NEW_RUN" >> "$GITHUB_OUTPUT"
+          echo "Run dir: $NEW_RUN"
+
+      - name: Drift vs baseline
+        # Exit 1 when any regression case is present so the GitHub job
+        # fails. The drift.yaml artifact is still written on the failure
+        # path so the run dir always carries the structured report.
+        run: |
+          evalh drift "${{ steps.run-dir.outputs.path }}" \
+              --exit-nonzero-on-regression
+
+      - name: Upload run artifacts
+        if: always()  # capture even on the regression-failure path
+        uses: actions/upload-artifact@v4
+        with:
+          name: evalh-run-${{ github.run_id }}
+          path: ${{ steps.run-dir.outputs.path }}
+          retention-days: 30
