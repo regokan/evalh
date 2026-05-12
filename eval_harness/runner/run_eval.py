@@ -3,9 +3,10 @@ from __future__ import annotations
 import asyncio
 import itertools
 import logging
+from collections.abc import Awaitable, Callable
 from contextlib import AsyncExitStack, suppress
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from eval_harness.core.models import (
     EvalCase,
@@ -28,9 +29,71 @@ logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from eval_harness.adapters.enricher.base import TraceEnricher
+    from eval_harness.adapters.trace.base import TraceStore
     from eval_harness.adapters.workspace.base import Workspace
     from eval_harness.evaluators.base import Evaluator
     from eval_harness.runner.plan_builder import RunPlan
+
+
+def _sink_name(store: object) -> str:
+    return type(store).__name__
+
+
+async def _secondary_call(
+    store: TraceStore,
+    op: str,
+    sink_errors: list[dict[str, Any]],
+    fn: Callable[..., Awaitable[None]],
+    /,
+    *args: Any,
+    **kwargs: Any,
+) -> None:
+    """Invoke a save / open on a non-canonical sink; trap any exception into
+    `sink_errors`. Never re-raises — secondary failures must not abort the
+    run."""
+    try:
+        await fn(*args, **kwargs)
+    except Exception as exc:
+        sink_errors.append(
+            {
+                "sink": _sink_name(store),
+                "op": op,
+                "error": f"{type(exc).__name__}: {exc}",
+            }
+        )
+        logger.warning(
+            "multi-sink: secondary store %s failed on %s: %s",
+            _sink_name(store),
+            op,
+            exc,
+        )
+
+
+async def _enter_secondary(
+    store: TraceStore,
+    stack: AsyncExitStack,
+    sink_errors: list[dict[str, Any]],
+) -> None:
+    """Best-effort __aenter__ for a secondary sink. Failure is logged into
+    sink_errors and the sink is removed from the dispatch list (the caller
+    keeps using the original list, so we instead just let later save_* calls
+    fail and record those — simpler and still correct: subsequent ops on a
+    sink whose enter failed will themselves log)."""
+    try:
+        await stack.enter_async_context(store)
+    except Exception as exc:
+        sink_errors.append(
+            {
+                "sink": _sink_name(store),
+                "op": "open",
+                "error": f"{type(exc).__name__}: {exc}",
+            }
+        )
+        logger.warning(
+            "multi-sink: secondary store %s failed on enter: %s",
+            _sink_name(store),
+            exc,
+        )
 
 
 @dataclass
@@ -49,9 +112,14 @@ async def run_eval(plan: RunPlan) -> RunSummary:
     if plan.price_table is not None:
         warn_default_table_in_use(plan.price_table)
     variant_models = _build_variant_model_index(plan.variants)
+    # Multi-sink output: collected best-effort failures land on
+    # RunSummary.sink_errors at finalize time. See docs/Observability.md.
+    sink_errors: list[dict[str, Any]] = []
 
     async with AsyncExitStack() as stack:
         await stack.enter_async_context(plan.trace_store)
+        for s in plan.secondary_trace_stores:
+            await _enter_secondary(s, stack, sink_errors)
         for adapter in plan.system_adapters.values():
             await stack.enter_async_context(adapter)
         for chain in plan.enrichers.values():
@@ -61,6 +129,8 @@ async def run_eval(plan: RunPlan) -> RunSummary:
             await stack.enter_async_context(plan.workspace)  # type: ignore[arg-type]
 
         await plan.trace_store.open(plan.run_id, plan.run_dir)
+        for s in plan.secondary_trace_stores:
+            await _secondary_call(s, "open", sink_errors, s.open, plan.run_id, plan.run_dir)
 
         cells = list(itertools.product(plan.cases, plan.variants))
         if plan.cell_filter is not None:
@@ -80,9 +150,10 @@ async def run_eval(plan: RunPlan) -> RunSummary:
                         plan,
                         accumulator.total_usd(),
                         cost_limit,
+                        sink_errors,
                     )
                 else:
-                    outcome = await _run_one(case, variant, plan)
+                    outcome = await _run_one(case, variant, plan, sink_errors)
                     _fill_cost_from_price_table(
                         outcome.trace, variant_models.get(variant.name), plan.price_table
                     )
@@ -99,7 +170,18 @@ async def run_eval(plan: RunPlan) -> RunSummary:
         )
 
         summary = aggregator.finalize()
+        # Share the same list — later best-effort save_summary failures on
+        # mirrors append into it and the returned RunSummary reflects them.
+        # (The persisted summary.yaml on the canonical sink necessarily
+        # predates save_summary-stage mirror failures; that asymmetry is
+        # acceptable per docs/Observability.md — local files is canonical.)
+        summary.sink_errors = sink_errors
+        # Canonical save first; if it fails the run is meaningless.
         await plan.trace_store.save_summary(summary)
+        for s in plan.secondary_trace_stores:
+            await _secondary_call(
+                s, "save_summary", sink_errors, s.save_summary, summary
+            )
         return summary
 
     raise RuntimeError("unreachable: AsyncExitStack never re-raises")
@@ -188,6 +270,7 @@ async def _short_circuit_cost_limit(
     plan: RunPlan,
     accumulated: float,
     limit: float | None,
+    sink_errors: list[dict[str, Any]],
 ) -> CellOutcome:
     """Build, persist, and return a cost_limit cell outcome.
 
@@ -212,6 +295,8 @@ async def _short_circuit_cost_limit(
     trace.finished_at = now
     trace.latency_ms = 0
     await plan.trace_store.save_trace(trace)
+    for s in plan.secondary_trace_stores:
+        await _secondary_call(s, "save_trace", sink_errors, s.save_trace, trace)
     return CellOutcome(case=case, variant=variant, trace=trace, results=[])
 
 
@@ -237,7 +322,12 @@ def _variant_concurrency(variant: RunVariant) -> int | None:
     return None
 
 
-async def _run_one(case: EvalCase, variant: RunVariant, plan: RunPlan) -> CellOutcome:
+async def _run_one(
+    case: EvalCase,
+    variant: RunVariant,
+    plan: RunPlan,
+    sink_errors: list[dict[str, Any]],
+) -> CellOutcome:
     workspace: Workspace | None = None
     try:
         if plan.workspace is not None:
@@ -263,11 +353,17 @@ async def _run_one(case: EvalCase, variant: RunVariant, plan: RunPlan) -> CellOu
         trace = await _run_enrichers(trace, plan.enrichers.get(variant.name, []))
 
         await plan.trace_store.save_trace(trace)
+        for s in plan.secondary_trace_stores:
+            await _secondary_call(s, "save_trace", sink_errors, s.save_trace, trace)
 
         artifact = None
         if workspace is not None and plan.workspace is not None:
             artifact = await plan.workspace.collect_artifacts(workspace)
             await plan.trace_store.save_artifact(artifact)
+            for s in plan.secondary_trace_stores:
+                await _secondary_call(
+                    s, "save_artifact", sink_errors, s.save_artifact, artifact
+                )
 
         raw_results = await asyncio.gather(
             *[ev.evaluate(case, trace, artifact) for ev in plan.evaluators],
@@ -278,6 +374,16 @@ async def _run_one(case: EvalCase, variant: RunVariant, plan: RunPlan) -> CellOu
             for r, ev in zip(raw_results, plan.evaluators, strict=True)
         ]
         await plan.trace_store.save_evaluation(case.id, variant.name, results)
+        for s in plan.secondary_trace_stores:
+            await _secondary_call(
+                s,
+                "save_evaluation",
+                sink_errors,
+                s.save_evaluation,
+                case.id,
+                variant.name,
+                results,
+            )
 
         return CellOutcome(case=case, variant=variant, trace=trace, results=results)
 

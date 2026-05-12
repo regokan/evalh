@@ -207,6 +207,13 @@ class RunSummary(BaseModel):
     variants: list[VariantSummary]
     by_evaluator: list[EvaluatorRollup]
     comparison: ComparisonReport | None = None
+    # Multi-sink output: when `output:` lists more than one TraceStore, the
+    # first is canonical and failures abort the run; non-first sinks are
+    # best-effort mirrors and their failures land here. Additive field;
+    # readers that don't know about it keep working. See docs/Observability.md
+    # > "Platforms are sources, sinks, and enrichers — never the source of
+    # truth."
+    sink_errors: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class FileEntry(BaseModel):

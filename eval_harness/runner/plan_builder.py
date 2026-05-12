@@ -35,6 +35,8 @@ class RunPlan:
     cases: list[EvalCase]
     variants: list[RunVariant]
     system_adapters: dict[str, SystemAdapter]
+    # First (canonical) TraceStore — failures here abort the run. v0 single-
+    # sink behaviour is preserved by always exposing the first store here.
     trace_store: TraceStore
     workspace: WorkspaceAdapter | None
     evaluators: list[Evaluator]
@@ -45,6 +47,10 @@ class RunPlan:
     # matters: the runner runs them in this order between SystemAdapter and
     # evaluators.
     enrichers: dict[str, list[TraceEnricher]] = field(default_factory=dict)
+    # Best-effort mirror sinks declared after the canonical one in
+    # `eval.yaml > output:[1..]`. Failures land in
+    # `RunSummary.sink_errors`; runs do NOT abort.
+    secondary_trace_stores: list[TraceStore] = field(default_factory=list)
     # Optional whitelist of `(case_id, variant_name)` cells. When set, run_eval
     # executes only these specific cells (instead of the full cases x variants
     # product). Used by `evalh run --retry-only-failed` to amend an existing
@@ -117,9 +123,19 @@ async def build_plan(
             facs.trace_enricher.build(spec) for spec in sys_cfg.enrich_trace_from
         ]
 
-    trace_store = facs.trace_store.build(output_cfg.model_dump())
-    if hasattr(trace_store, "rendered_config"):
-        trace_store.rendered_config = config.model_dump(mode="python")
+    # Build every declared sink. First is canonical; the rest are best-effort
+    # mirrors. The canonical sink owns the on-disk run_dir; we don't try to
+    # generalise that to secondary sinks because most non-local backends
+    # (sqlite, postgres, langfuse, …) don't need a host path.
+    rendered_config = config.model_dump(mode="python")
+    all_stores: list[TraceStore] = []
+    for out_cfg in config.output:
+        store = facs.trace_store.build(out_cfg.model_dump())
+        if hasattr(store, "rendered_config"):
+            store.rendered_config = rendered_config
+        all_stores.append(store)
+    trace_store = all_stores[0]
+    secondary_trace_stores = all_stores[1:]
 
     workspace: WorkspaceAdapter | None = None
     if config.workspace is not None:
@@ -141,6 +157,7 @@ async def build_plan(
         config=config,
         run_id=run_id,
         run_dir=run_dir,
+        secondary_trace_stores=secondary_trace_stores,
         cases=cases,
         variants=variants,
         system_adapters=system_adapters,
