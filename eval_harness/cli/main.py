@@ -3,7 +3,9 @@ from __future__ import annotations
 import click
 
 from eval_harness.cli.commands.compare import compare as compare_command
+from eval_harness.cli.commands.drift import drift as drift_command
 from eval_harness.cli.commands.inspect import inspect as inspect_command
+from eval_harness.cli.commands.promote import promote as promote_command
 from eval_harness.cli.commands.re_evaluate import re_evaluate as re_evaluate_command
 from eval_harness.cli.commands.run import run as run_command
 
@@ -18,6 +20,8 @@ cli.add_command(run_command)
 cli.add_command(inspect_command)
 cli.add_command(re_evaluate_command)
 cli.add_command(compare_command)
+cli.add_command(promote_command)
+cli.add_command(drift_command)
 
 
 if __name__ == "__main__":
