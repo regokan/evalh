@@ -322,8 +322,17 @@ class EvaluatorVariantRollup(BaseModel):
     avg_score: float | None
 
 class ComparisonReport(BaseModel):
-    baseline: str                    # variant name
+    baseline: str                    # variant name (ad_hoc) OR baseline run_id (drift)
     deltas: list[VariantDelta]
+    # Additive (v1.x): which kind of comparison this is. Default is
+    # `'ad_hoc'` so summary.yaml files written by v0/v0.1/v0.2/v1 load
+    # unchanged. `'drift'` is populated by the drift CLI when comparing
+    # a current run against a promoted baseline (see `evalh promote` +
+    # `runs/baselines/<eval_name>/` in CLI.md).
+    kind: Literal['ad_hoc', 'drift'] = 'ad_hoc'
+    baseline_run_id: str | None = None        # set only when kind == 'drift'
+    regressions_count: int | None = None      # ergonomic top-level count for webhook formatters
+    improvements_count: int | None = None
 
 class VariantDelta(BaseModel):
     variant: str

@@ -1,3 +1,11 @@
+"""Within-run variant comparison.
+
+Produces a `ComparisonReport` with ``kind='ad_hoc'`` from a single run's
+variants + evaluator results. Drift comparisons (run A vs run B) share
+the per-case-pass-rate arithmetic via `eval_harness.runner._deltas`; this
+file just shapes the inputs for the within-run case.
+"""
+
 from __future__ import annotations
 
 from eval_harness.core.models import (
@@ -6,6 +14,7 @@ from eval_harness.core.models import (
     VariantDelta,
     VariantSummary,
 )
+from eval_harness.runner._deltas import compute_improvements, compute_regressions
 
 
 def build_comparison(
@@ -30,21 +39,13 @@ def build_comparison(
         if other is None:
             continue
         other_pass = case_pass_by_variant.get(variant.name, {})
-        regressions = sorted(
-            case_id for case_id, passed in base_pass.items()
-            if passed and not other_pass.get(case_id, False)
-        )
-        improvements = sorted(
-            case_id for case_id, passed in other_pass.items()
-            if passed and not base_pass.get(case_id, False)
-        )
         deltas.append(
             VariantDelta(
                 variant=variant.name,
                 pass_rate_delta=other.pass_rate - base.pass_rate,
                 avg_latency_delta_ms=other.avg_latency_ms - base.avg_latency_ms,
-                regressions=regressions,
-                improvements=improvements,
+                regressions=compute_regressions(base_pass, other_pass),
+                improvements=compute_improvements(base_pass, other_pass),
             )
         )
-    return ComparisonReport(baseline=baseline, deltas=deltas)
+    return ComparisonReport(baseline=baseline, deltas=deltas, kind="ad_hoc")

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import traceback
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, PrivateAttr
 
@@ -194,6 +194,16 @@ class VariantDelta(BaseModel):
 class ComparisonReport(BaseModel):
     baseline: str
     deltas: list[VariantDelta]
+    # 'ad_hoc' = within-run variant comparison (the original v0 use).
+    # 'drift'  = baseline-run vs current-run comparison (v1.x drift CLI /
+    # webhook sink). Default preserves backwards compatibility — existing
+    # `summary.yaml` files without this field load as ``kind='ad_hoc'``.
+    kind: Literal["ad_hoc", "drift"] = "ad_hoc"
+    # Populated only when ``kind == 'drift'``. None for ad_hoc so the
+    # field is invisible in the existing v0/v0.1/v0.2/v1 surface.
+    baseline_run_id: str | None = None
+    regressions_count: int | None = None
+    improvements_count: int | None = None
 
 
 class RunSummary(BaseModel):

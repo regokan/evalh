@@ -86,6 +86,35 @@ Picks the cells where `trace.error` is set, re-runs the system for those cases o
 
 ---
 
+## Drift detection
+
+Drift compares a *current* run against a previously-promoted *baseline* run. This is the across-run cousin of `evalh compare`, which compares two arbitrary run dirs. Both share the per-case-pass-rate + regression / improvement arithmetic from `eval_harness.runner._deltas`.
+
+### Baseline marker
+
+`runs/baselines/<eval_name>/` is a **symlink** to the run currently designated as the baseline for that eval. The symlink is the source of truth — `ls runs/baselines/` shows what's promoted at a glance.
+
+Promoting (foundation lives in `eval_harness.core.baseline`; `evalh promote` ships in the next bead):
+
+```bash
+evalh promote runs/2026-05-12T14-30-00_listing_price_eval
+# -> runs/baselines/listing_price_eval -> ../2026-05-12T14-30-00_listing_price_eval
+```
+
+Reading the baseline from another tool:
+
+```python
+from pathlib import Path
+from eval_harness.core.baseline import get_baseline_run
+
+baseline = get_baseline_run("listing_price_eval", runs_root=Path("runs"))
+# Path | None
+```
+
+Drift reports use the same `ComparisonReport` shape as ad-hoc comparisons, distinguished by a `kind: 'ad_hoc' | 'drift'` discriminator. See `docs/DataModel.md → RunSummary` for the schema.
+
+---
+
 ## Output: `runs/<run_id>/`
 
 Every run produces exactly this layout. **The shape is a committed contract.**
