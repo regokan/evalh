@@ -2,6 +2,7 @@
 
 [![CI](https://github.com/regokan/evalh/actions/workflows/ci.yml/badge.svg)](https://github.com/regokan/evalh/actions/workflows/ci.yml)
 [![PyPI](https://img.shields.io/pypi/v/eval-harness.svg)](https://pypi.org/project/eval-harness/)
+[![PyPI - Downloads](https://img.shields.io/pypi/dm/eval-harness.svg)](https://pypi.org/project/eval-harness/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/)
 
@@ -10,6 +11,9 @@
 eval-harness is a config-driven evaluation framework for AI systems — agents, RAG pipelines, code-modifying tools, multi-turn assistants, raw LLM endpoints. You describe the run in one YAML file. The harness dispatches the matrix of cases × variants, captures structured traces, runs evaluators, persists results, and produces a comparable summary.
 
 It is not a benchmark suite. It is the harness that runs your benchmarks.
+
+📦 **On PyPI:** <https://pypi.org/project/eval-harness/>
+📚 **Source:** <https://github.com/regokan/evalh>
 
 ---
 
