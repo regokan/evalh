@@ -6,12 +6,12 @@ import pytest
 
 pytest.importorskip("pygit2")
 
-from eval_harness.adapters.workspace.git_workspace_adapter import GitWorkspaceAdapter  # noqa: E402
-from eval_harness.adapters.workspace.tempdir_snapshot_adapter import (  # noqa: E402
+from eval_harness.adapters.workspace.git_workspace_adapter import GitWorkspaceAdapter
+from eval_harness.adapters.workspace.tempdir_snapshot_adapter import (
     TempdirSnapshotAdapter,
 )
-from eval_harness.core.errors import AdapterError, ConfigError  # noqa: E402
-from eval_harness.core.models import EvalCase, FilesystemArtifact, RunVariant  # noqa: E402
+from eval_harness.core.errors import AdapterError, ConfigError
+from eval_harness.core.models import EvalCase, FilesystemArtifact, RunVariant
 
 
 def _case(case_id: str = "c1") -> EvalCase:
