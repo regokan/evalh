@@ -96,6 +96,7 @@ postgres    = "eval_harness.adapters.trace.postgres_store:PostgresStore"
 [project.entry-points."eval_harness.workspaces"]
 tempdir_snapshot = "eval_harness.adapters.workspace.tempdir_snapshot_adapter:TempdirSnapshotAdapter"
 git              = "eval_harness.adapters.workspace.git_workspace_adapter:GitWorkspaceAdapter"
+docker_volume    = "eval_harness.adapters.workspace.docker_volume_adapter:DockerVolumeAdapter"
 
 [project.entry-points."eval_harness.llm_backends"]
 claude = "eval_harness.core.llm_backends.anthropic:AnthropicLlmBackend"
@@ -136,7 +137,7 @@ addopts = "-ra --strict-markers"
 markers = [
   "integration: end-to-end tests that hit a real LLM (require ANTHROPIC_API_KEY)",
   "perf: long-running performance tests (e.g. 10K-case streaming aggregate)",
-  "docker: tests that require a reachable docker daemon (skipped otherwise)",
+  "docker: tests that require a reachable Docker daemon (docker SystemAdapter, docker_volume workspace adapter); skipped otherwise",
 ]
 
 [tool.ruff]

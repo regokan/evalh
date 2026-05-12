@@ -48,11 +48,30 @@ jobs:
       - name: ruff check
         run: uv run --no-sync ruff check .
 
+      - name: detect docker
+        id: docker_check
+        # Sets an output flag; the next step decides whether to exclude the
+        # @pytest.mark.docker tests. When docker IS available those tests run
+        # and fail loudly on regressions (per ev-yry). When it's not, we
+        # explicitly exclude them — the marker is the gate.
+        run: |
+          if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
+            echo "available=1" >> "$GITHUB_OUTPUT"
+          else
+            echo "available=0" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: pytest
         # `not perf` skips the perf-marked tests reserved for the v0.2
-        # streaming/10K-case bead; CI runs unit + integration + parametrized
-        # backend contract tests.
-        run: uv run --no-sync pytest tests/ -q -m "not perf"
+        # streaming/10K-case bead. `not docker` is OR'd in only when no
+        # Docker daemon is reachable; with Docker present, the
+        # docker_volume sandbox tests run.
+        run: |
+          if [ "${{ steps.docker_check.outputs.available }}" = "1" ]; then
+            uv run --no-sync pytest tests/ -q -m "not perf"
+          else
+            uv run --no-sync pytest tests/ -q -m "not perf and not docker"
+          fi
 
   typecheck:
     name: mypy --strict (py3.11)
