@@ -76,7 +76,8 @@ llm_judge     = "eval_harness.evaluators.llm_judge:LlmJudgeEvaluator"
 exact_match   = "eval_harness.evaluators.exact_match:ExactMatchEvaluator"
 
 [project.entry-points."eval_harness.dataset_adapters"]
-yaml = "eval_harness.adapters.dataset.yaml_dataset_adapter:YamlDatasetAdapter"
+yaml  = "eval_harness.adapters.dataset.yaml_dataset_adapter:YamlDatasetAdapter"
+jsonl = "eval_harness.adapters.dataset.jsonl_dataset_adapter:JsonlDatasetAdapter"
 
 [project.entry-points."eval_harness.trace_stores"]
 local_files = "eval_harness.adapters.trace.local_files_store:LocalFilesStore"
