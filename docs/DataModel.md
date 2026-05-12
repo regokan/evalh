@@ -388,3 +388,39 @@ runs/2026-05-03T10-30-00_listing_price_eval/
 ```
 
 This is the durable surface. Anything not in this folder is regenerable or unimportant.
+
+---
+
+## Run namespacing
+
+> *Added in v0.2. Additive — no `schema_version` bump.*
+
+TraceStores accept an optional `run_namespace: dict[str, str]` in their
+config. It's metadata for *filtering and isolation*, not part of the `run_id`
+itself:
+
+```yaml
+output:
+  - type: sqlite
+    path: runs.db
+    run_namespace:
+      project: agent_v3
+      branch: main
+```
+
+| Backend | Behavior |
+|---|---|
+| `local_files` | **Ignores.** Single-tenant flat `runs/<run_id>/` layout. |
+| `sqlite` | Stores as a JSON-serialized `namespace` column on every row. Multi-tenant isolation is opt-in at query time. |
+| `postgres` (v0.2+) | Indexes on namespace keys for multi-tenant isolation. |
+
+**Why a separate field, not baked into `run_id`?** The `run_id` is a sortable
+`{ISO8601}_{eval_name}` slug — that's the natural key for one run. Namespace
+is for grouping runs across projects, branches, environments. Mixing the two
+would force every consumer of `run_id` to parse it.
+
+**Backwards compatibility.** SQLite databases created in v0.1 are migrated
+in-place on open: the store runs `PRAGMA table_info` and adds a `namespace`
+column where missing. No `schema_version` bump because nothing in the
+persisted data shape changed — the column is `NULL`-able and defaults to
+`NULL` for v0.1 rows.

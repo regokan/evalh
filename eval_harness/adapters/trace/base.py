@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
 from pathlib import Path
 from types import TracebackType
 from typing import Protocol, Self, runtime_checkable
@@ -39,3 +40,21 @@ class TraceStore(Protocol):
     async def save_summary(self, summary: RunSummary) -> None: ...
 
     async def close(self) -> None: ...
+
+    # ---- Read methods (v0.2). All backends must implement these so callers
+    # (RunReader, evalh inspect/compare/re-evaluate) work uniformly across
+    # local_files / sqlite / postgres. ``run_id=None`` streams every run the
+    # backend knows about; ``batch_size`` is a hint — backends may fetch in
+    # bigger chunks. Callers must not assume any batch boundary.
+
+    def iter_traces(
+        self, run_id: str | None = None, batch_size: int = 100
+    ) -> AsyncIterator[Trace]: ...
+
+    def iter_results(
+        self, run_id: str | None = None, batch_size: int = 100
+    ) -> AsyncIterator[EvaluationResult]: ...
+
+    async def load_summary(self, run_id: str) -> RunSummary | None: ...
+
+    async def list_run_ids(self) -> list[str]: ...
