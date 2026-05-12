@@ -267,3 +267,178 @@ def test_no_traces_match_filters(runner: CliRunner, tmp_path: Path) -> None:
 def test_missing_run_dir_fails(runner: CliRunner, tmp_path: Path) -> None:
     result = runner.invoke(cli, ["inspect", str(tmp_path / "nope")])
     assert result.exit_code != 0
+
+
+# ---- artifact rendering --------------------------------------------------
+
+
+def _write_artifact(
+    run_dir: Path,
+    *,
+    case_id: str,
+    variant: str,
+    added: list[str] | None = None,
+    removed: list[str] | None = None,
+    modified: list[str] | None = None,
+    text_diffs: dict[str, str] | None = None,
+    after_files: dict[str, tuple[int, str]] | None = None,
+    workspace_kind: str = "tempdir_snapshot",
+) -> Path:
+    from eval_harness.core.models import (
+        FileDiff,
+        FileEntry,
+        FileManifest,
+        FilesystemArtifact,
+    )
+
+    artifact_dir = run_dir / "artifacts" / case_id / variant
+    artifact_dir.mkdir(parents=True, exist_ok=True)
+    after_manifest_files = {
+        name: FileEntry(size=size, mode=0o644, mtime=0.0, sha256=sha)
+        for name, (size, sha) in (after_files or {}).items()
+    }
+    artifact = FilesystemArtifact(
+        case_id=case_id,
+        variant_name=variant,
+        workspace_kind=workspace_kind,
+        before_manifest=FileManifest(files={}),
+        after_manifest=FileManifest(files=after_manifest_files),
+        diff=FileDiff(
+            added=added or [],
+            removed=removed or [],
+            modified=modified or [],
+            text_diffs=text_diffs or {},
+        ),
+        artifacts_path=str(artifact_dir),
+    )
+    (artifact_dir / "artifact.json").write_text(artifact.model_dump_json(indent=2))
+    return artifact_dir
+
+
+def test_artifact_renders_diff_summary_and_per_file_bodies(
+    runner: CliRunner, tmp_path: Path
+) -> None:
+    run_dir = tmp_path / "r1"
+    _seed_run_dir(
+        run_dir,
+        traces=[_trace("c1", "v1")],
+        results=[],
+    )
+    _write_artifact(
+        run_dir,
+        case_id="c1",
+        variant="v1",
+        added=["new/file.py"],
+        modified=["src/app.py"],
+        text_diffs={
+            "src/app.py": "--- a/src/app.py\n+++ b/src/app.py\n@@ -1 +1 @@\n-old\n+new\n"
+        },
+        after_files={"new/file.py": (123, "abc123")},
+        workspace_kind="tempdir_snapshot",
+    )
+    result = runner.invoke(cli, ["inspect", str(run_dir), "--case", "c1"])
+    assert result.exit_code == 0, result.output
+    # Summary table
+    assert "filesystem diff" in result.output
+    assert "src/app.py" in result.output
+    assert "new/file.py" in result.output
+    # Workspace metadata panel
+    assert "workspace_kind" in result.output
+    assert "tempdir_snapshot" in result.output
+    # Per-file diff body
+    assert "diff: src/app.py" in result.output
+    assert "+new" in result.output
+    # Added file (no text diff) shows manifest fallback
+    assert "binary/new: new/file.py" in result.output
+    assert "abc123" in result.output
+
+
+def test_no_artifacts_flag_skips_rendering(
+    runner: CliRunner, tmp_path: Path
+) -> None:
+    run_dir = tmp_path / "r1"
+    _seed_run_dir(
+        run_dir,
+        traces=[_trace("c1", "v1")],
+        results=[],
+    )
+    _write_artifact(
+        run_dir,
+        case_id="c1",
+        variant="v1",
+        modified=["src/app.py"],
+        text_diffs={"src/app.py": "--- a\n+++ b\n@@ -1 +1 @@\n-a\n+b\n"},
+    )
+    result = runner.invoke(
+        cli, ["inspect", str(run_dir), "--case", "c1", "--no-artifacts"]
+    )
+    assert result.exit_code == 0, result.output
+    assert "filesystem diff" not in result.output
+    assert "diff: src/app.py" not in result.output
+
+
+def test_artifact_section_absent_when_no_artifact_directory(
+    runner: CliRunner, tmp_path: Path
+) -> None:
+    """A case with no artifact on disk renders cleanly without errors."""
+    run_dir = tmp_path / "r1"
+    _seed_run_dir(
+        run_dir,
+        traces=[_trace("c1", "v1")],
+        results=[],
+    )
+    result = runner.invoke(cli, ["inspect", str(run_dir), "--case", "c1"])
+    assert result.exit_code == 0, result.output
+    assert "filesystem diff" not in result.output
+
+
+def test_artifact_long_diff_is_truncated_by_default(
+    runner: CliRunner, tmp_path: Path
+) -> None:
+    big_body = "\n".join(f"+line {i}" for i in range(500))
+    run_dir = tmp_path / "r1"
+    _seed_run_dir(
+        run_dir,
+        traces=[_trace("c1", "v1")],
+        results=[],
+    )
+    _write_artifact(
+        run_dir,
+        case_id="c1",
+        variant="v1",
+        modified=["big.txt"],
+        text_diffs={"big.txt": big_body},
+    )
+    result = runner.invoke(cli, ["inspect", str(run_dir), "--case", "c1"])
+    assert result.exit_code == 0, result.output
+    assert "truncated" in result.output
+
+
+def test_artifact_long_diff_not_truncated_with_no_truncate_flag(
+    runner: CliRunner, tmp_path: Path
+) -> None:
+    big_body = "\n".join(f"+line {i}" for i in range(500))
+    run_dir = tmp_path / "r1"
+    _seed_run_dir(
+        run_dir,
+        traces=[_trace("c1", "v1")],
+        results=[],
+    )
+    _write_artifact(
+        run_dir,
+        case_id="c1",
+        variant="v1",
+        modified=["big.txt"],
+        text_diffs={"big.txt": big_body},
+    )
+    result = runner.invoke(
+        cli, ["inspect", str(run_dir), "--case", "c1", "--no-truncate"]
+    )
+    assert result.exit_code == 0, result.output
+    assert "truncated" not in result.output
+
+
+def test_help_lists_no_artifacts_flag(runner: CliRunner) -> None:
+    result = runner.invoke(cli, ["inspect", "--help"])
+    assert result.exit_code == 0
+    assert "--no-artifacts" in result.output

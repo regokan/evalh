@@ -10,9 +10,15 @@ import click
 if TYPE_CHECKING:
     from rich.console import Console
 
-    from eval_harness.core.models import EvaluationResult, RunSummary, Trace
+    from eval_harness.core.models import (
+        EvaluationResult,
+        FilesystemArtifact,
+        RunSummary,
+        Trace,
+    )
 
 _THINKING_TRUNCATE = 2048
+_DIFF_LINE_TRUNCATE = 200
 
 
 @click.command("inspect")
@@ -44,12 +50,19 @@ _THINKING_TRUNCATE = 2048
     default=False,
     help="Don't truncate long thinking blocks.",
 )
+@click.option(
+    "--no-artifacts",
+    is_flag=True,
+    default=False,
+    help="Skip rendering FilesystemArtifact even when present.",
+)
 def inspect(
     run_dir: Path,
     case_id: str | None,
     variant_name: str | None,
     failed: bool,
     no_truncate: bool,
+    no_artifacts: bool,
 ) -> None:
     """Inspect a finished eval run.
 
@@ -61,7 +74,9 @@ def inspect(
 
     try:
         asyncio.run(
-            _inspect(run_dir, case_id, variant_name, failed, no_truncate)
+            _inspect(
+                run_dir, case_id, variant_name, failed, no_truncate, no_artifacts
+            )
         )
     except ConfigError as exc:
         raise click.ClickException(str(exc)) from exc
@@ -73,6 +88,7 @@ async def _inspect(
     variant_name: str | None,
     failed: bool,
     no_truncate: bool,
+    no_artifacts: bool,
 ) -> None:
     from rich.console import Console
 
@@ -116,6 +132,10 @@ async def _inspect(
         for t in traces:
             results = results_by_cell.get((t.case_id, t.variant_name), [])
             _print_cell_detail(console, t, results, truncate=not no_truncate)
+            if not no_artifacts:
+                artifact = _load_artifact(run_dir, t.case_id, t.variant_name)
+                if artifact is not None:
+                    _print_artifact(console, artifact, truncate=not no_truncate)
     else:
         _print_cell_table(console, traces, results_by_cell)
 
@@ -292,3 +312,90 @@ def _format_json(value: object) -> str:
         return json.dumps(value, indent=2, default=str, ensure_ascii=False)
     except TypeError:
         return str(value)
+
+
+def _load_artifact(
+    run_dir: Path, case_id: str, variant_name: str
+) -> FilesystemArtifact | None:
+    """Read `runs/<id>/artifacts/<case>/<variant>/artifact.json` if present."""
+    from eval_harness.core.models import FilesystemArtifact
+
+    path = run_dir / "artifacts" / case_id / variant_name / "artifact.json"
+    if not path.exists():
+        return None
+    return FilesystemArtifact.model_validate_json(path.read_text())
+
+
+def _print_artifact(
+    console: Console,
+    artifact: FilesystemArtifact,
+    *,
+    truncate: bool,
+) -> None:
+    from rich.panel import Panel
+    from rich.syntax import Syntax
+    from rich.table import Table
+
+    diff = artifact.diff
+    summary_table = Table(title="filesystem diff")
+    summary_table.add_column("kind")
+    summary_table.add_column("count", justify="right")
+    summary_table.add_column("files")
+    summary_table.add_row("added", str(len(diff.added)), _join_short(diff.added))
+    summary_table.add_row("removed", str(len(diff.removed)), _join_short(diff.removed))
+    summary_table.add_row("modified", str(len(diff.modified)), _join_short(diff.modified))
+    console.print(summary_table)
+
+    meta_lines = [
+        f"workspace_kind: {artifact.workspace_kind}",
+        f"artifacts_path: {artifact.artifacts_path}",
+        f"before_files: {len(artifact.before_manifest.files)}",
+        f"after_files: {len(artifact.after_manifest.files)}",
+    ]
+    console.print(Panel("\n".join(meta_lines), title="workspace", border_style="cyan"))
+
+    # Per-file detail. For text diffs we have, show the unified-diff body
+    # (truncated). For modified files without a text diff, show the after
+    # manifest entry (size + sha) as a fallback.
+    after_files = artifact.after_manifest.files
+    for path in diff.modified + diff.added:
+        if path in diff.text_diffs:
+            body = diff.text_diffs[path]
+            if truncate:
+                body = _truncate_diff(body)
+            console.print(
+                Panel(
+                    Syntax(body, "diff", word_wrap=True),
+                    title=f"diff: {path}",
+                    border_style="yellow",
+                )
+            )
+        elif path in after_files:
+            entry = after_files[path]
+            console.print(
+                Panel(
+                    f"size: {entry.size} bytes\nsha256: {entry.sha256}",
+                    title=f"binary/new: {path}",
+                    border_style="yellow",
+                )
+            )
+
+
+def _join_short(paths: list[str], limit: int = 6) -> str:
+    if not paths:
+        return "—"
+    if len(paths) <= limit:
+        return ", ".join(paths)
+    head = ", ".join(paths[:limit])
+    return f"{head}, … ({len(paths) - limit} more)"
+
+
+def _truncate_diff(body: str) -> str:
+    lines = body.splitlines()
+    if len(lines) <= _DIFF_LINE_TRUNCATE:
+        return body
+    head = "\n".join(lines[:_DIFF_LINE_TRUNCATE])
+    return (
+        f"{head}\n… (truncated {len(lines) - _DIFF_LINE_TRUNCATE} more lines; "
+        "pass --no-truncate)"
+    )
