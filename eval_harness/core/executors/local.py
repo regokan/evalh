@@ -148,65 +148,22 @@ class LocalExecutor:
         case, variant = self._cell_index[cell.cell_id]
         return asyncio.create_task(self._dispatch(cell, case, variant))
 
-    async def dispatch_all_local(
-        self,
-        cases_and_variants: list[tuple[EvalCase, RunVariant, str | None]],
+    async def dispatch_all(
+        self, cells: list[CellDescriptor]
     ) -> list[CellOutcome]:
-        """Fast path for the in-process case: bulk-gather coroutines
-        without 10K trips through `submit_cell + await` and without
-        building CellDescriptor instances. Matches the v1.x runner's
-        `asyncio.gather(*[run_cell(c, v) for c, v in cells])` shape
-        exactly. Distributed executors don't have this method and stay
-        on the generic submit_cell + await_all path (which DOES build
-        CellDescriptors, because the worker needs them over the wire).
-        """
+        """In-process bulk dispatch — matches the v1.x runner's exact
+        ``asyncio.gather(*[run_cell(c, v) for c, v in cells])`` shape.
+
+        The runner uses this as the single dispatch entry point, never
+        branching on executor class. Distributed executors override
+        with their own batched-RPC implementation."""
+        cell_index = self._cell_index
         return await asyncio.gather(
             *(
-                self._dispatch_direct(case, variant, pool)
-                for case, variant, pool in cases_and_variants
+                self._dispatch(cell, *cell_index[cell.cell_id])
+                for cell in cells
             )
         )
-
-    async def _dispatch_direct(
-        self,
-        case: EvalCase,
-        variant: RunVariant,
-        pool: str | None,
-    ) -> CellOutcome:
-        """Faster variant of `_dispatch` that takes (case, variant, pool)
-        directly and skips the CellDescriptor attribute access. Used by
-        the local fast path."""
-        plan = self._plan
-        accumulator = self._accumulator
-        aggregator = self._aggregator
-        assert plan is not None and accumulator is not None and aggregator is not None
-        cost_limit = plan.config.run.cost_limit_usd
-        if pool is not None:
-            semaphore = self._pool_semaphores.get(
-                pool, self._variant_semaphores[variant.name]
-            )
-        else:
-            semaphore = self._variant_semaphores[variant.name]
-        async with semaphore:
-            if accumulator.check_limit(cost_limit):
-                outcome = await _short_circuit_cost_limit(
-                    case,
-                    variant,
-                    plan,
-                    accumulator.total_usd(),
-                    cost_limit,
-                    self._sink_errors,
-                )
-            else:
-                outcome = await _run_one(case, variant, plan, self._sink_errors)
-                _fill_cost_from_price_table(
-                    outcome.trace,
-                    self._variant_models.get(variant.name),
-                    plan.price_table,
-                )
-                accumulator.tally(outcome.trace)
-            aggregator.add(outcome)
-        return outcome
 
     async def await_outcome(self, handle: asyncio.Task[Any]) -> Any:
         return await handle

@@ -110,7 +110,7 @@ def test_v2_local_executor_within_5pct_of_pre_v2_baseline(
     assert wall_time < budget, (
         f"v2 wall_time {wall_time:.2f}s exceeds 5%-tolerance budget "
         f"{budget:.2f}s (pre-v2 baseline {baseline['wall_time_seconds']:.2f}s). "
-        f"Likely cause: someone re-introduced the per-cell "
-        f"`submit_cell + await` loop on the local path instead of the "
-        f"`LocalExecutor.dispatch_all_local` bulk-gather."
+        f"Likely cause: `LocalExecutor.dispatch_all` no longer uses a "
+        f"single bulk `asyncio.gather` (someone reintroduced a per-cell "
+        f"`submit_cell + await` round-trip on the in-process path)."
     )

@@ -19,7 +19,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Callable
 from importlib.metadata import entry_points
-from typing import Any, Protocol, runtime_checkable
+from typing import Any, Protocol, Self, runtime_checkable
 
 from eval_harness.core.errors import ConfigError
 from eval_harness.core.models import CellDescriptor
@@ -34,12 +34,26 @@ CellHandle = Any
 class Executor(Protocol):
     """The unit of distribution is a cell. Executors carry cells.
 
-    Lifecycle: `open(plan)` once, then any number of `submit_cell` /
-    `await_outcome` / `await_all` pairs, then `close()`. Implementations
-    should be safe to call `submit_cell` concurrently; ordering is the
-    caller's responsibility (the runner gathers handles per variant
-    semaphore).
+    Lifecycle: ``async with executor`` (open enters per-run context);
+    `open(plan)` once; then `dispatch_all(cells)` (or any number of
+    `submit_cell` / `await_outcome` / `await_all` pairs); then
+    `close()`. Implementations should be safe to call `submit_cell`
+    concurrently; ordering is the caller's responsibility.
+
+    The runner uses `dispatch_all` exclusively so it never has to
+    branch on executor class. Implementations supply whatever
+    per-environment dispatch makes sense (in-process `asyncio.gather`
+    for Local, batched RPC for distributed back-ends).
     """
+
+    async def __aenter__(self) -> Self: ...
+
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        tb: Any,
+    ) -> None: ...
 
     async def open(self, plan: Any) -> None:
         """Hand over the run plan so the executor can build whatever
@@ -47,9 +61,37 @@ class Executor(Protocol):
         Local executor, queue connections for Celery)."""
         ...
 
+    def bind_cells(self, cells: list[tuple[CellDescriptor, Any, Any]]) -> None:
+        """Hand the executor the per-cell live bindings
+        ``(cell, case, variant)``. The in-process Local executor uses
+        these to skip pydantic re-validation per cell; distributed
+        executors that rehydrate from `cell.case_dict` /
+        `cell.eval_config_dict` can no-op."""
+        ...
+
+    def finalize(self) -> Any:
+        """Return the aggregated `RunSummary` after `dispatch_all`
+        completes. Implementations stream outcomes into the
+        aggregator as cells finish so this is just the final flush."""
+        ...
+
+    async def dispatch_all(self, cells: list[CellDescriptor]) -> list[Any]:
+        """Run every cell to completion, returning their `CellOutcome`s
+        in input order. The runner calls this exactly once per run.
+
+        Distributed back-ends typically implement this by submitting
+        cells to a queue and gathering outcomes; the in-process Local
+        executor implements it with a single ``asyncio.gather``. The
+        runner doesn't care which — it only ever calls this method.
+        """
+        ...
+
     async def submit_cell(self, cell: CellDescriptor) -> CellHandle:
         """Submit one cell for execution. Returns an opaque handle the
-        caller awaits later via `await_outcome` / `await_all`."""
+        caller awaits later via `await_outcome` / `await_all`. Most
+        callers use `dispatch_all` instead — this is the underlying
+        primitive distributed executors expose for fine-grained
+        scheduling integration."""
         ...
 
     async def await_outcome(self, handle: CellHandle) -> Any:
@@ -119,6 +161,23 @@ class ExecutorRegistry:
                 f"entry-point group."
             )
         return factory()
+
+    def build(self, *, type: str, **kwargs: Any) -> Executor:
+        """Resolve `type` and construct the executor with `**kwargs`.
+
+        Used by the runner so it never has to ``isinstance`` a concrete
+        executor or special-case `local`. Entry-point loading is
+        lazy + idempotent on first call."""
+        self.load_entry_points()
+        factory = self._factories.get(type)
+        if factory is None:
+            raise ConfigError(
+                f"run.executor.type: no executor registered as {type!r}. "
+                f"Known: {sorted(self._factories)}. Distributed executors "
+                f"register from their own packages via the "
+                f"`eval_harness.executors` entry-point group."
+            )
+        return factory(**kwargs)
 
     def names(self) -> list[str]:
         return sorted(self._factories)

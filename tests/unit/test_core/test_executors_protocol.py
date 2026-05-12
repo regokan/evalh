@@ -33,12 +33,30 @@ class _FakeExecutor:
         self.closed = False
         self.submitted: list[CellDescriptor] = []
 
+    async def __aenter__(self) -> _FakeExecutor:
+        return self
+
+    async def __aexit__(self, *a: object) -> None:
+        return None
+
     async def open(self, plan: Any) -> None:
         self.opened = True
+
+    def bind_cells(self, cells: list[tuple[CellDescriptor, Any, Any]]) -> None:
+        return None
+
+    def finalize(self) -> dict[str, str]:
+        return {"summary": "fake"}
 
     async def submit_cell(self, cell: CellDescriptor) -> CellHandle:
         self.submitted.append(cell)
         return f"handle:{cell.cell_id}"
+
+    async def dispatch_all(
+        self, cells: list[CellDescriptor]
+    ) -> list[dict[str, str]]:
+        handles = [await self.submit_cell(c) for c in cells]
+        return await self.await_all(handles)
 
     async def await_outcome(self, handle: CellHandle) -> dict[str, str]:
         return {"handle": str(handle), "status": "ok"}

@@ -197,16 +197,27 @@ async def test_local_executor_await_all(tmp_path: Path) -> None:
         assert len(outcomes) == 1
 
 
-async def test_local_executor_fast_path_dispatch_all(tmp_path: Path) -> None:
-    """The fast path skips CellDescriptor construction entirely — the
-    runner uses it on the local route."""
+async def test_local_executor_dispatch_all_bulk_path(tmp_path: Path) -> None:
+    """`dispatch_all` is the single Protocol entry point the runner
+    uses — LocalExecutor's implementation is a bulk `asyncio.gather`."""
     plan = _plan(tmp_path)
     executor = LocalExecutor()
     async with executor:
         await executor.open(plan)
-        outcomes = await executor.dispatch_all_local(
-            [(plan.cases[0], plan.variants[0], None)]
+        cell = CellDescriptor.model_construct(
+            schema_version="1.0",
+            cell_id="r-unit::c1::v1::aaaaaaaaaaaa",
+            run_id="r-unit",
+            case_id="c1",
+            variant_name="v1",
+            config_hash="aaaaaaaaaaaa",
+            eval_config_dict={},
+            case_dict={},
+            workspace_kind=None,
+            pool=None,
         )
+        executor.bind_cells([(cell, plan.cases[0], plan.variants[0])])
+        outcomes = await executor.dispatch_all([cell])
         assert len(outcomes) == 1
         assert outcomes[0].case.id == "c1"
 
@@ -271,9 +282,20 @@ async def test_local_executor_finalize_returns_summary_with_sink_errors(
     executor = LocalExecutor()
     async with executor:
         await executor.open(plan)
-        await executor.dispatch_all_local(
-            [(plan.cases[0], plan.variants[0], None)]
+        cell = CellDescriptor.model_construct(
+            schema_version="1.0",
+            cell_id="r-unit::c1::v1::ffffffffffff",
+            run_id="r-unit",
+            case_id="c1",
+            variant_name="v1",
+            config_hash="ffffffffffff",
+            eval_config_dict={},
+            case_dict={},
+            workspace_kind=None,
+            pool=None,
         )
+        executor.bind_cells([(cell, plan.cases[0], plan.variants[0])])
+        await executor.dispatch_all([cell])
         summary = executor.finalize()
         # sink_errors is empty on the happy path.
         assert summary.sink_errors == []

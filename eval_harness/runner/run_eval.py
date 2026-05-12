@@ -7,7 +7,6 @@ from contextlib import AsyncExitStack, suppress
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-from eval_harness.core.errors import ConfigError
 from eval_harness.core.models import (
     EvalCase,
     EvaluationResult,
@@ -102,61 +101,32 @@ class CellOutcome:
 
 
 async def run_eval(plan: RunPlan) -> RunSummary:
-    """v2: dispatch through the configured `Executor`. Default `local`
-    preserves the v1.x behaviour — the LocalExecutor wraps the same
-    `asyncio.gather` + `Semaphore` shape and inherits the streaming
-    aggregator, cost-limit guard, sink-failure isolation, and
-    AsyncExitStack-managed adapter lifecycle."""
+    """Dispatch through the configured `Executor`. The runner only ever
+    calls the Executor Protocol — no isinstance / type-name branching
+    lives here. Per-environment fast paths belong inside the
+    executor's own `dispatch_all` implementation (the in-process
+    `LocalExecutor` bulk-gathers; distributed executors batch RPCs).
+
+    Default `run.executor.type` is `local`, which preserves the v1.x
+    behaviour — same streaming aggregator, cost-limit guard,
+    sink-failure isolation, and AsyncExitStack-managed adapter
+    lifecycle, just hosted on the Protocol.
+    """
     from eval_harness.core.executors import executor_registry
-    from eval_harness.core.executors.local import LocalExecutor
 
     executor_cfg = plan.config.run.executor
-    executor: Any
-    if executor_cfg.type == "local":
-        # Build the Local executor directly — saves an entry-point lookup
-        # on the hot path and keeps the per-cell overhead floor identical
-        # to the v1.x runner.
-        executor = LocalExecutor(pools=dict(executor_cfg.pools))
-    else:
-        executor_registry.load_entry_points()
-        factory_cls = executor_registry._factories.get(executor_cfg.type)
-        if factory_cls is None:
-            raise ConfigError(
-                f"run.executor.type: no executor registered as "
-                f"{executor_cfg.type!r}. Known: "
-                f"{sorted(executor_registry._factories)}"
-            )
-        executor = factory_cls()
+    executor = executor_registry.build(
+        type=executor_cfg.type, pools=dict(executor_cfg.pools)
+    )
 
     pool_for_variant = _build_pool_index(plan)
+    cells_with_bindings = _build_cell_descriptors(plan, pool_for_variant)
 
     async with executor:
         await executor.open(plan)
-
-        if isinstance(executor, LocalExecutor):
-            # Local fast path — skip CellDescriptor construction entirely
-            # (the local executor reuses live adapters; only distributed
-            # executors need the serialized descriptor to send over the
-            # wire). Preserves v1.x's `asyncio.gather` shape exactly.
-            cases_and_variants = [
-                (case, variant, pool_for_variant.get(variant.name))
-                for case in plan.cases
-                for variant in plan.variants
-                if plan.cell_filter is None
-                or (case.id, variant.name) in plan.cell_filter
-            ]
-            await executor.dispatch_all_local(cases_and_variants)
-        else:
-            # Generic Protocol path for distributed executors. Build
-            # CellDescriptors (one per cell) so the worker can rebuild
-            # adapters from `eval_config_dict` + re-validate the case.
-            cells_with_bindings = _build_cell_descriptors(plan, pool_for_variant)
-            executor.bind_cells(cells_with_bindings)
-            handles = [
-                await executor.submit_cell(cell)
-                for cell, _, _ in cells_with_bindings
-            ]
-            await executor.await_all(handles)
+        executor.bind_cells(cells_with_bindings)
+        cells = [cell for cell, _, _ in cells_with_bindings]
+        await executor.dispatch_all(cells)
 
         summary: RunSummary = executor.finalize()
         # Canonical save first; if it fails the run is meaningless.
@@ -182,11 +152,25 @@ def _build_pool_index(plan: RunPlan) -> dict[str, str]:
 def _build_cell_descriptors(
     plan: RunPlan, pool_for_variant: dict[str, str]
 ) -> list[tuple[Any, EvalCase, RunVariant]]:
-    """Build full `CellDescriptor` instances for the generic Protocol
-    path. The local executor takes a faster route — see
-    `LocalExecutor.dispatch_all_local`."""
+    """Build one `CellDescriptor` per (case, variant) cell.
+
+    Uses `model_construct` to skip pydantic validation — fields come
+    straight from already-validated config + case objects, so a second
+    validation pass per cell would cost 10K * ~50us with no upside on a
+    10K-case run. Distributed executors that ingest CellDescriptors
+    over the wire use full `model_validate` on the receiving end.
+
+    `eval_config_dict` and `case_dict` are intentionally empty here —
+    they're the worker rehydration channel for distributed executors,
+    which serialize per their own transport. Building them eagerly
+    would deep-copy every case for the in-process path that doesn't
+    need them; future distributed executor beads populate these in
+    their own `submit_cell` body.
+    """
     from eval_harness.core.models import CellDescriptor, compute_cell_id
 
+    # config_slice doesn't vary across cases for one variant — hash
+    # once per variant and reuse for each cell.
     variant_hashes: dict[str, str] = {
         v.name: compute_cell_id(
             run_id=plan.run_id,
@@ -205,6 +189,7 @@ def _build_cell_descriptors(
         plan.config.workspace.type if plan.config.workspace is not None else None
     )
     _Cell = CellDescriptor.model_construct
+    _EMPTY: dict[str, Any] = {}
     out: list[tuple[Any, EvalCase, RunVariant]] = []
     for case in plan.cases:
         for variant in plan.variants:
@@ -221,8 +206,8 @@ def _build_cell_descriptors(
                 case_id=case.id,
                 variant_name=variant.name,
                 config_hash=config_hash,
-                eval_config_dict=case.model_dump(mode="python"),
-                case_dict=case.model_dump(mode="python"),
+                eval_config_dict=_EMPTY,
+                case_dict=_EMPTY,
                 workspace_kind=workspace_kind,
                 pool=pool_for_variant.get(variant.name),
             )
