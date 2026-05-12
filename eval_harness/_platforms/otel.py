@@ -22,7 +22,7 @@ import contextlib
 import json
 from dataclasses import dataclass, field
 from threading import Lock
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from eval_harness.core.errors import ConfigError
 
@@ -161,12 +161,20 @@ class OtelClient:
                 "isn't installed. Install with: pip install "
                 "'opentelemetry-exporter-otlp-proto-grpc'"
             )
+        from opentelemetry.sdk.trace import TracerProvider as _TracerProvider
+
         exporter = exporter_cls(endpoint=self.endpoint, headers=self.headers)
         resource = self._deps.Resource.create(self.resource_attributes)
         provider: Any = self._deps.TracerProvider(resource=resource)
         provider.add_span_processor(self._deps.BatchSpanProcessor(exporter))
-        self._provider = provider
-        return provider  # type: ignore[no-any-return]
+        # `cast` is honoured under both env profiles: with the [otel] extra
+        # installed mypy narrows the `Any` to the real `TracerProvider`;
+        # without the extra, `ignore_missing_imports=true` makes the cast
+        # target itself `Any`, so the cast is a no-op rather than an
+        # unused-ignore violation.
+        typed = cast(_TracerProvider, provider)
+        self._provider = typed
+        return typed
 
     def get_tracer(self, name: str) -> Tracer:
         """Convenience: return a tracer bound to this client's provider."""
