@@ -15,15 +15,15 @@ from eval_harness.core.models import (
     Trace,
     TraceError,
 )
-from eval_harness.core.time import utc_now
-from eval_harness.evaluators._judge_backends import (
-    JudgeBackend,
-    judge_backend_registry,
+from eval_harness.core.llm_backends import (
+    LlmBackend,
+    LlmCallCostLimitError,
+    llm_backend_registry,
 )
-from eval_harness.evaluators._judge_backends._pricing import (
+from eval_harness.core.llm_backends._pricing import (
     estimate_cost_usd,
-    estimate_tokens_from_text,
 )
+from eval_harness.core.time import utc_now
 from eval_harness.evaluators.base import Evaluator
 
 _DEFAULT_INCLUDE = ["input", "output.final_answer"]
@@ -107,7 +107,9 @@ class LlmJudgeEvaluator(Evaluator):
         self._max_tokens: int = int(config.get("max_tokens", _DEFAULT_MAX_TOKENS))
 
         # Resolve backend at plan time so a missing SDK fails before any case runs.
-        self._backend: JudgeBackend = judge_backend_registry.resolve(model)
+        if not llm_backend_registry._entry_points_loaded:
+            llm_backend_registry.load_entry_points()
+        self._backend: LlmBackend = llm_backend_registry.resolve(model)
 
     async def evaluate(
         self,
@@ -129,25 +131,22 @@ class LlmJudgeEvaluator(Evaluator):
             pass_when=self._pass_when,
         )
 
-        if self._cost_limit_usd is not None:
-            estimated_input = estimate_tokens_from_text(prompt)
-            estimated_output = min(self._max_tokens, 512)
-            estimated = estimate_cost_usd(self._model, estimated_input, estimated_output)
-            if estimated > self._cost_limit_usd:
-                return _error_result(
-                    self,
-                    case,
-                    trace,
-                    started,
-                    type_="cost_limit_exceeded",
-                    message=(
-                        f"estimated cost ${estimated:.4f} exceeds cost_limit_usd "
-                        f"${self._cost_limit_usd:.4f}"
-                    ),
-                )
-
         try:
-            judge_response = await self._backend.judge(prompt, schema, self._max_tokens)
+            llm_call = await self._backend.generate(
+                prompt,
+                max_tokens=self._max_tokens,
+                schema=schema,
+                cost_limit_usd=self._cost_limit_usd,
+            )
+        except LlmCallCostLimitError as e:
+            return _error_result(
+                self,
+                case,
+                trace,
+                started,
+                type_="cost_limit_exceeded",
+                message=str(e),
+            )
         except Exception as e:
             return _error_result(
                 self,
@@ -159,6 +158,7 @@ class LlmJudgeEvaluator(Evaluator):
                 stack=traceback.format_exc(),
             )
 
+        judge_response = llm_call.structured or {}
         try:
             passed, score, reason, detail = _aggregate(
                 judge_response=judge_response,
@@ -180,15 +180,17 @@ class LlmJudgeEvaluator(Evaluator):
             )
 
         detail["judge_model"] = self._model
-        usage = judge_response.get("_usage") if isinstance(judge_response, dict) else None
-        if isinstance(usage, dict):
-            actual = estimate_cost_usd(
-                self._model,
-                int(usage.get("input_tokens", 0)),
-                int(usage.get("output_tokens", 0)),
+        actual_cost = llm_call.cost_usd
+        if actual_cost is None and llm_call.token_input is not None and llm_call.token_output is not None:
+            actual_cost = estimate_cost_usd(
+                self._model, int(llm_call.token_input), int(llm_call.token_output)
             )
-            detail["cost_usd"] = round(actual, 6)
-            if self._cost_limit_usd is not None and actual > self._cost_limit_usd:
+        if actual_cost is not None:
+            detail["cost_usd"] = round(actual_cost, 6)
+            if (
+                self._cost_limit_usd is not None
+                and actual_cost > self._cost_limit_usd
+            ):
                 return _error_result(
                     self,
                     case,
@@ -196,7 +198,7 @@ class LlmJudgeEvaluator(Evaluator):
                     started,
                     type_="cost_limit_exceeded",
                     message=(
-                        f"actual cost ${actual:.4f} exceeds cost_limit_usd "
+                        f"actual cost ${actual_cost:.4f} exceeds cost_limit_usd "
                         f"${self._cost_limit_usd:.4f}"
                     ),
                 )

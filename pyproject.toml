@@ -93,6 +93,12 @@ postgres    = "eval_harness.adapters.trace.postgres_store:PostgresStore"
 tempdir_snapshot = "eval_harness.adapters.workspace.tempdir_snapshot_adapter:TempdirSnapshotAdapter"
 git              = "eval_harness.adapters.workspace.git_workspace_adapter:GitWorkspaceAdapter"
 
+[project.entry-points."eval_harness.llm_backends"]
+claude = "eval_harness.core.llm_backends.anthropic:AnthropicLlmBackend"
+
+# DEPRECATED — kept for backwards compatibility with v0.x third-party
+# plugins. Loaded by the v1 LlmBackendRegistry via a JudgeBackend → LlmBackend
+# adapter shim. New code should register under ``eval_harness.llm_backends``.
 [project.entry-points."eval_harness.judge_backends"]
 claude = "eval_harness.evaluators._judge_backends.anthropic_backend:AnthropicJudgeBackend"
 
