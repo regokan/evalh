@@ -80,6 +80,11 @@ modal    = ["modal>=1,<2"]
 # in-process mode so the integration test runs without a real cluster;
 # real cluster runs are the manual benchmark.
 ray      = ["ray>=2,<3"]
+# Celery executor (v2): each cell becomes a Celery task. Requires a
+# broker; Redis is the simplest and what the integration test runs
+# against. Users with an existing AMQP broker (RabbitMQ) swap the
+# `broker_url` in their eval.yaml without changing the extra.
+celery   = ["celery>=5,<6", "redis>=5,<7"]
 # Cloud backends for FsspecObjectStorage. Each pulls fsspec's
 # protocol-specific package; no per-cloud code lives in eval-harness
 # because fsspec already abstracts the differences.
@@ -107,6 +112,8 @@ all = [
   "opentelemetry-sdk>=1.27",
   "opentelemetry-exporter-otlp>=1.27",
   "sentence-transformers>=3,<6",
+  "celery>=5,<6",
+  "redis>=5,<7",
 ]
 
 [project.scripts]
@@ -182,9 +189,10 @@ claude = "eval_harness.core.llm_backends.anthropic:AnthropicLlmBackend"
 # distributed executors (Modal / K8s / Celery / Ray) register from their
 # own packages in subsequent beads.
 [project.entry-points."eval_harness.executors"]
-local = "eval_harness.core.executors.local:LocalExecutor"
-modal = "eval_harness.core.executors.modal_executor:ModalExecutor"
-ray   = "eval_harness.core.executors.ray_executor:RayExecutor"
+local  = "eval_harness.core.executors.local:LocalExecutor"
+modal  = "eval_harness.core.executors.modal_executor:ModalExecutor"
+ray    = "eval_harness.core.executors.ray_executor:RayExecutor"
+celery = "eval_harness.core.executors.celery_executor:CeleryExecutor"
 
 # Sixth adapter family — TraceEnricher. Built-ins ship the OTel enricher
 # v1-supplement; Langfuse / Phoenix register their concrete enrichers in
@@ -238,6 +246,7 @@ markers = [
   "s3: tests that require an s3-compatible backend (FsspecObjectStorage against moto / minio); skipped otherwise",
   "modal: tests that require a configured Modal account (cloud-deployed cell execution); skipped otherwise",
   "ray: tests that exercise the Ray executor (use Ray's in-process mode; require the [ray] extra); skipped otherwise",
+  "celery: tests that exercise the Celery executor (require a reachable broker; honour EVALH_TEST_REDIS_URL); skipped otherwise",
 ]
 
 [tool.ruff]

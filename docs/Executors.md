@@ -114,3 +114,31 @@ K8s).
 - **Modal / Kubernetes Jobs / Celery / Ray executors** — each its own
   bead, each registers via the entry-point group.
 - **Distributed-1M benchmark** — proves the per-cell envelope at scale.
+
+---
+
+## CeleryExecutor
+
+Each cell becomes a ``celery.Celery.send_task`` call against a broker
+(Redis or AMQP) with a matching result backend. Workers boot separately
+against the same broker via ``celery -A <module> worker`` and resolve
+the registered ``evalh.run_cell`` task by name; the worker body is the
+shared ``_worker.worker_run_cell_sync`` Modal and Ray also use, so
+workers behave identically across executors.
+
+```yaml
+run:
+  executor:
+    type: celery
+    broker_url: redis://localhost:6379/0       # required
+    result_backend: redis://localhost:6379/0   # defaults to broker_url
+    task_name: evalh.run_cell                  # default
+    timeout: 600                               # AsyncResult.get timeout (s)
+```
+
+This is the heaviest infra footprint of the four distributed executors:
+the broker, the result backend, and a worker pool all have to be
+running independently of the orchestrator. The integration test
+(``@pytest.mark.celery``) honours ``EVALH_TEST_REDIS_URL`` — set it to
+a reachable Redis URL to run the live-broker tests; CI excludes the
+marker by default because CI workflows don't ship a Redis service.

@@ -72,9 +72,9 @@ jobs:
         # rather than fails loudly when the marker is excluded.
         run: |
           if [ "${{ steps.docker_check.outputs.available }}" = "1" ]; then
-            uv run --no-sync pytest tests/ -q -m "not perf and not s3 and not modal"
+            uv run --no-sync pytest tests/ -q -m "not perf and not s3 and not modal and not celery"
           else
-            uv run --no-sync pytest tests/ -q -m "not perf and not docker and not s3 and not modal"
+            uv run --no-sync pytest tests/ -q -m "not perf and not docker and not s3 and not modal and not celery"
           fi
 
   typecheck:
