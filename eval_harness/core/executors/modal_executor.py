@@ -17,9 +17,10 @@ mounting, Modal CLI auth).
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Callable
 from contextlib import AsyncExitStack
 from types import TracebackType
-from typing import TYPE_CHECKING, Any, Self
+from typing import TYPE_CHECKING, Any, Self, cast
 
 from eval_harness.core.errors import ConfigError
 from eval_harness.core.executors._worker import worker_run_cell_sync
@@ -235,14 +236,27 @@ class ModalExecutor:
         image = self._compose_image(modal)
         app = modal.App(self._app_name, image=image)
 
-        @app.function(timeout=self._timeout)
         def _evalh_worker(cell_dict: dict[str, Any]) -> dict[str, Any]:
             # Module-level qualified name so Modal can pickle by reference.
             return worker_run_cell_sync(cell_dict, timeout_seconds=None)
 
+        # Apply the decorator post-def with a `cast` (mirrors ev-joq's
+        # `_platforms/otel.py` approach). Under mypy --strict, with the
+        # [modal] extra absent, `modal.App.function` is `Any`; an untyped
+        # decorator applied to a typed function produces an
+        # `[untyped-decorator]` error. `cast` is honoured under both env
+        # profiles: with `modal` installed mypy narrows the decorator
+        # result to the typed signature, without it `ignore_missing_imports
+        # = true` makes the cast target itself `Any` so the cast is a
+        # no-op rather than an `[unused-ignore]` violation.
+        decorated = cast(
+            Callable[[dict[str, Any]], dict[str, Any]],
+            app.function(timeout=self._timeout)(_evalh_worker),
+        )
+
         # Stash the app so callers / tests can inspect it.
         self._modal_app = app
-        return _evalh_worker
+        return decorated
 
     def _compose_image(self, modal_mod: Any) -> Any:
         """Build a ``modal.Image`` from ``image_spec``. Conservative
