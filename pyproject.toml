@@ -84,6 +84,9 @@ local_files = "eval_harness.adapters.trace.local_files_store:LocalFilesStore"
 [project.entry-points."eval_harness.workspaces"]
 tempdir_snapshot = "eval_harness.adapters.workspace.tempdir_snapshot_adapter:TempdirSnapshotAdapter"
 
+[project.entry-points."eval_harness.judge_backends"]
+claude = "eval_harness.evaluators._judge_backends.anthropic_backend:AnthropicJudgeBackend"
+
 [project.urls]
 Homepage = "https://github.com/regokan/evalh"
 Issues   = "https://github.com/regokan/evalh/issues"
