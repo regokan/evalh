@@ -136,6 +136,36 @@ def test_linear_api_key_required() -> None:
         WebhookTraceStore(platform="linear")
 
 
+# ---- URL scheme validation (security) ----------------------------------
+
+
+def test_slack_rejects_file_scheme_url() -> None:
+    """`file://` and other non-http(s) schemes must be rejected — same
+    rule as the http SystemAdapter. SSRF defense, no exceptions."""
+    with pytest.raises(ConfigError, match="scheme"):
+        WebhookTraceStore(platform="slack", url="file:///etc/passwd")
+
+
+def test_slack_rejects_plain_http_for_non_localhost() -> None:
+    """Plain http:// to a non-localhost host is rejected; users must opt
+    into https:// for production webhooks."""
+    with pytest.raises(ConfigError, match="localhost"):
+        WebhookTraceStore(platform="slack", url="http://attacker.example/")
+
+
+def test_slack_accepts_http_localhost_for_dev() -> None:
+    """Dev fixtures need `http://localhost:PORT` — explicitly allowed."""
+    store = WebhookTraceStore(
+        platform="slack", url="http://localhost:9000/hook"
+    )
+    assert store.url == "http://localhost:9000/hook"
+
+
+def test_discord_rejects_gopher_scheme() -> None:
+    with pytest.raises(ConfigError, match="scheme"):
+        WebhookTraceStore(platform="discord", url="gopher://example.com/")
+
+
 # ---- Slack --------------------------------------------------------------
 
 

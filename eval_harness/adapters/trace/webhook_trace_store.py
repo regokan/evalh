@@ -42,6 +42,7 @@ from eval_harness.core.models import (
     RunSummary,
     Trace,
 )
+from eval_harness.core.url import validate_url_scheme
 
 _SUPPORTED_PLATFORMS = frozenset({"slack", "discord", "linear"})
 _DEFAULT_TIMEOUT_SECONDS = 10.0
@@ -79,6 +80,13 @@ class WebhookTraceStore:
             raise ConfigError(
                 f"webhook trace store ({platform}): 'url' is required "
                 "(the webhook URL)"
+            )
+        if platform != "linear" and url is not None:
+            # Reject `file://`, `gopher://`, plain `http://` to non-localhost,
+            # etc. Per `.claude/rules/security.md`. Shared helper keeps the
+            # rule in lockstep with the http SystemAdapter.
+            validate_url_scheme(
+                url, adapter_name=f"webhook trace store ({platform})"
             )
         if platform == "linear" and _linear_client is None and not api_key:
             raise ConfigError(

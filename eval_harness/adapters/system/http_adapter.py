@@ -7,7 +7,6 @@ import time
 from collections.abc import AsyncGenerator, Callable
 from types import TracebackType
 from typing import Any, Self
-from urllib.parse import urlparse
 
 import httpx
 from jsonpath_ng.ext import parse as jsonpath_parse
@@ -17,6 +16,7 @@ from eval_harness.adapters.workspace.base import Workspace
 from eval_harness.core.errors import AdapterError, ConfigError, RetriableError
 from eval_harness.core.models import EvalCase, RunVariant, Trace, TraceMetrics, TraceOutput
 from eval_harness.core.time import utc_now
+from eval_harness.core.url import validate_url_scheme as _validate_shared_url_scheme
 
 _VALID_STREAM_FORMATS = ("sse", "json_lines", "raw_chunks")
 _SSE_DONE_SENTINEL = "[DONE]"
@@ -442,24 +442,9 @@ class HttpSystemAdapter:
 
 
 def _validate_url_scheme(url: str) -> None:
-    try:
-        parsed = urlparse(url)
-    except ValueError as e:
-        raise ConfigError(f"http adapter: invalid endpoint URL '{url}': {e}") from e
-    scheme = parsed.scheme.lower()
-    if scheme == "https":
-        return
-    if scheme == "http":
-        host = (parsed.hostname or "").lower()
-        if host == "localhost" or host == "127.0.0.1" or host.startswith("127."):
-            return
-        raise ConfigError(
-            f"http adapter: plain http:// only allowed for localhost; got '{url}'"
-        )
-    raise ConfigError(
-        f"http adapter: unsupported URL scheme '{scheme}' in '{url}' "
-        f"(only https:// and http://localhost are allowed)"
-    )
+    # Delegates to the shared helper so http_adapter + webhook_trace_store
+    # (and any new HTTP-shaped adapter) can't drift on the security rule.
+    _validate_shared_url_scheme(url, adapter_name="http adapter")
 
 
 def _render_template(template: str, context: dict[str, Any]) -> str:
