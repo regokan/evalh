@@ -78,12 +78,13 @@ def test_http_adapter_unknown_provider_raises() -> None:
         )
 
 
-def test_http_adapter_stream_not_implemented() -> None:
-    with pytest.raises(NotImplementedError):
+def test_http_adapter_stream_requires_format() -> None:
+    from eval_harness.core.errors import ConfigError as _CE
+
+    with pytest.raises(_CE):
         HttpSystemAdapter(
             name="x",
             endpoint="https://example.com/",
-            response_mapping={"final_answer": "$.x"},
             stream=True,
         )
 
