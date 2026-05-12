@@ -73,6 +73,7 @@ cli             = "eval_harness.adapters.system.cli_adapter:CliSystemAdapter"
 replay          = "eval_harness.adapters.system.replay_adapter:ReplaySystemAdapter"
 git_branch      = "eval_harness.adapters.system.git_branch_adapter:GitBranchAdapter"
 docker          = "eval_harness.adapters.system.docker_adapter:DockerSystemAdapter"
+user_simulator  = "eval_harness.adapters.system.user_simulator_adapter:UserSimulatorSystemAdapter"
 
 [project.entry-points."eval_harness.evaluators"]
 contains_text = "eval_harness.evaluators.contains_text:ContainsTextEvaluator"

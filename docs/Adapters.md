@@ -410,6 +410,54 @@ Why this earns its own SystemAdapter (rather than being a runner mode flag): it 
 
 See [Observability.md → Pattern 4](Observability.md#pattern-4-online-evaluation) and [`examples/online_eval/`](../examples/online_eval/) for full configuration.
 
+### v1: `user_simulator` — multi-turn conversations
+
+`user_simulator` drives a multi-turn conversation by playing the user role with an LLM. It is a SystemAdapter (no new family) and composes with an `inner_system` adapter that handles the actual system-under-test call each turn. The user-role LLM is resolved through the shared `LlmBackend` registry (same one `llm_judge` uses), so adding a backend lights up both consumers.
+
+```yaml
+systems:
+  - name: agent_conversational
+    adapter: user_simulator
+    user_model: claude-4-7
+    user_persona_prompt: |
+      You are a curious real-estate buyer asking about listings. Keep
+      questions short and concrete. Stop when satisfied.
+    max_turns: 6
+    stopping_criterion:
+      type: content_match
+      patterns: ["thanks", "that's all"]
+      case_sensitive: false
+    inner_system:                       # configured like any SystemAdapter
+      adapter: http
+      endpoint: http://localhost:8000/chat
+      response_mapping:
+        final_answer: $.answer
+        tool_calls: $.tool_calls
+    cost_limit_usd: 0.20                # per-call cap on the user-role LLM
+```
+
+Three stopping criteria, all gated by `max_turns` as a hard ceiling:
+
+| `type` | Extra fields | Stops when |
+|---|---|---|
+| `turn_count` | `n` | after `n` assistant replies |
+| `content_match` | `patterns: list[str]`, `case_sensitive?: bool` | latest assistant turn contains any pattern |
+| `judge` | `model`, `question` | a judge LLM answers `yes` to `question` |
+
+Per turn the wrapper:
+1. Appends the current user message to the running conversation.
+2. Synthesises a per-turn case (`case.input.user_message` + `case.input.conversation`) and calls `inner_system.run(...)`. Inner adapters that only know about `user_message` keep working; multi-turn-aware inners can read `conversation`.
+3. Appends the assistant reply, accumulates metrics, tool calls, and tool results.
+4. Checks the stopping criterion; if not satisfied, calls the user-role backend to produce the next user message.
+
+The final `Trace`:
+- `output.final_answer` = last assistant turn.
+- `output.thinking` = per-turn thinking concatenated (or `None` if no turn surfaced thinking).
+- `messages` = the full alternating User / Assistant transcript.
+- `tool_calls` / `tool_results` = aggregated across turns.
+- `metrics` = summed tokens / cost across turns.
+- `extra.user_simulator = { turns, stop_reason, user_model, max_turns }` for evaluators that want to gate on conversation length or the stop reason.
+
 ---
 
 ## TraceEnricher
