@@ -84,6 +84,9 @@ latency_under = "eval_harness.evaluators.latency_under:LatencyUnderEvaluator"
 cost_under    = "eval_harness.evaluators.cost_under:CostUnderEvaluator"
 git_diff      = "eval_harness.evaluators.git_diff:GitDiffEvaluator"
 command       = "eval_harness.evaluators.command:CommandEvaluator"
+thinking_tokens_under  = "eval_harness.evaluators.thinking_tokens_under:ThinkingTokensUnderEvaluator"
+thinking_present       = "eval_harness.evaluators.thinking_present:ThinkingPresentEvaluator"
+thinking_does_not_leak = "eval_harness.evaluators.thinking_does_not_leak:ThinkingDoesNotLeakEvaluator"
 
 [project.entry-points."eval_harness.dataset_adapters"]
 yaml    = "eval_harness.adapters.dataset.yaml_dataset_adapter:YamlDatasetAdapter"
