@@ -66,11 +66,15 @@ jobs:
         # streaming/10K-case bead. `not docker` is OR'd in only when no
         # Docker daemon is reachable; with Docker present, the
         # docker_volume sandbox tests run.
+        # `not s3` is always OR'd in for CI — the s3 ObjectStorage test
+        # (ev-d6m) needs moto[server] + s3fs locally; CI's standard
+        # extras don't pull those, and the test deliberately skips
+        # rather than fails loudly when the marker is excluded.
         run: |
           if [ "${{ steps.docker_check.outputs.available }}" = "1" ]; then
-            uv run --no-sync pytest tests/ -q -m "not perf"
+            uv run --no-sync pytest tests/ -q -m "not perf and not s3"
           else
-            uv run --no-sync pytest tests/ -q -m "not perf and not docker"
+            uv run --no-sync pytest tests/ -q -m "not perf and not docker and not s3"
           fi
 
   typecheck:

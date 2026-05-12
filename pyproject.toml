@@ -32,6 +32,10 @@ dependencies = [
   "jsonpath-ng>=1.6,<2",
   "python-dotenv>=1,<2",
   "jsonschema (>=4,<5)",
+  # fsspec is the bytes-mover behind the v2 ObjectStorage abstraction.
+  # Tiny + pure-Python by itself; cloud backends pull s3fs / gcsfs / adlfs
+  # under the matching extra below.
+  "fsspec>=2024",
 ]
 
 [project.optional-dependencies]
@@ -70,6 +74,12 @@ webhook  = ["linear-api>=0.2,<1"]
 git      = ["pygit2>=1.15"]
 docker   = ["docker>=7"]
 otel     = ["opentelemetry-sdk>=1.27", "opentelemetry-exporter-otlp>=1.27"]
+# Cloud backends for FsspecObjectStorage. Each pulls fsspec's
+# protocol-specific package; no per-cloud code lives in eval-harness
+# because fsspec already abstracts the differences.
+s3       = ["s3fs>=2024"]
+gcs      = ["gcsfs>=2024"]
+azure    = ["adlfs>=2024"]
 
 # Embedder backends for the `semantic_similarity` evaluator. NO default is
 # shipped — pick one based on the cost/size tradeoff. `[openai]` adds an
@@ -177,6 +187,11 @@ phoenix  = "eval_harness.adapters.enricher.phoenix_enricher:PhoenixTraceEnricher
 arize    = "eval_harness.adapters.enricher.arize_enricher:ArizeTraceEnricher"
 braintrust = "eval_harness.adapters.enricher.braintrust_enricher:BraintrustTraceEnricher"
 
+# V2 foundation #3: ObjectStorage bytes-mover. Built-in: `fsspec` handles
+# file:// / s3:// / gs:// / az:// / memory:// behind one class.
+[project.entry-points."eval_harness.object_storages"]
+fsspec = "eval_harness.core.object_storage.fsspec_storage:FsspecObjectStorage"
+
 [project.urls]
 Homepage = "https://github.com/regokan/evalh"
 Issues   = "https://github.com/regokan/evalh/issues"
@@ -211,6 +226,7 @@ markers = [
   "integration: end-to-end tests that hit a real LLM (require ANTHROPIC_API_KEY)",
   "perf: long-running performance tests (e.g. 10K-case streaming aggregate)",
   "docker: tests that require a reachable Docker daemon (docker SystemAdapter, docker_volume workspace adapter); skipped otherwise",
+  "s3: tests that require an s3-compatible backend (FsspecObjectStorage against moto / minio); skipped otherwise",
 ]
 
 [tool.ruff]

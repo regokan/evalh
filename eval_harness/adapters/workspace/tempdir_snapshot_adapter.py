@@ -9,6 +9,7 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
+from eval_harness.adapters.workspace._artifact_publish import publish_artifact
 from eval_harness.adapters.workspace.base import Workspace
 from eval_harness.core.errors import AdapterError, ConfigError
 from eval_harness.core.models import (
@@ -19,6 +20,7 @@ from eval_harness.core.models import (
     FilesystemArtifact,
     RunVariant,
 )
+from eval_harness.core.object_storage.base import ObjectStorage
 
 _CHUNK_SIZE = 64 * 1024
 _MAX_TEXT_DIFF_BYTES = 256 * 1024
@@ -34,6 +36,7 @@ class TempdirSnapshotAdapter:
         *,
         copy_from: str | None = None,
         base_path: str | None = None,
+        object_storage: ObjectStorage | None = None,
         **_extra: Any,
     ) -> None:
         self.name = name
@@ -43,6 +46,7 @@ class TempdirSnapshotAdapter:
                 f"tempdir_snapshot: copy_from path does not exist: {self._copy_from}"
             )
         self._base_path = Path(base_path).expanduser() if base_path else None
+        self._object_storage = object_storage
 
     async def prepare(self, case: EvalCase, variant: RunVariant) -> Workspace:
         if self._base_path is not None:
@@ -92,7 +96,7 @@ class TempdirSnapshotAdapter:
             after,
             diff,
         )
-        return FilesystemArtifact(
+        artifact = FilesystemArtifact(
             case_id=str(workspace.metadata.get("case_id", "")),
             variant_name=str(workspace.metadata.get("variant_name", "")),
             workspace_kind="tempdir_snapshot",
@@ -101,6 +105,7 @@ class TempdirSnapshotAdapter:
             diff=diff,
             artifacts_path=str(workspace.path),
         )
+        return await publish_artifact(artifact, self._object_storage)
 
     async def cleanup(self, workspace: Workspace) -> None:
         await asyncio.to_thread(shutil.rmtree, str(workspace.path), True)

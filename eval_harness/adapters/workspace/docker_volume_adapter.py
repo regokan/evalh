@@ -33,6 +33,7 @@ import uuid
 from pathlib import Path
 from typing import Any
 
+from eval_harness.adapters.workspace._artifact_publish import publish_artifact
 from eval_harness.adapters.workspace.base import Workspace
 from eval_harness.adapters.workspace.tempdir_snapshot_adapter import (
     _build_manifest,
@@ -49,6 +50,7 @@ from eval_harness.core.models import (
     FilesystemArtifact,
     RunVariant,
 )
+from eval_harness.core.object_storage.base import ObjectStorage
 
 _DEFAULT_HELPER_IMAGE = "alpine:3.20"
 _DOCKER_CMD_TIMEOUT = 60.0
@@ -64,6 +66,7 @@ class DockerVolumeAdapter:
         copy_from: str | None = None,
         image: str | None = None,
         volume_name: str | None = None,
+        object_storage: ObjectStorage | None = None,
         **_extra: Any,
     ) -> None:
         if not _docker_available():
@@ -83,6 +86,7 @@ class DockerVolumeAdapter:
             )
         self._image = image or _DEFAULT_HELPER_IMAGE
         self._volume_name_override = volume_name
+        self._object_storage = object_storage
 
     async def prepare(self, case: EvalCase, variant: RunVariant) -> Workspace:
         volume_name = self._volume_name_override or _generate_volume_name(case, variant)
@@ -152,7 +156,7 @@ class DockerVolumeAdapter:
             diff.text_diffs = await asyncio.to_thread(
                 _compute_text_diffs, after_dir, before_text_cache, after, diff
             )
-            return FilesystemArtifact(
+            artifact = FilesystemArtifact(
                 case_id=str(workspace.metadata.get("case_id", "")),
                 variant_name=str(workspace.metadata.get("variant_name", "")),
                 workspace_kind="docker_volume",
@@ -161,6 +165,7 @@ class DockerVolumeAdapter:
                 diff=diff,
                 artifacts_path=str(after_dir),
             )
+            return await publish_artifact(artifact, self._object_storage)
         except Exception:
             shutil.rmtree(after_dir, ignore_errors=True)
             raise

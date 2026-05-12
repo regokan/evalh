@@ -179,6 +179,12 @@ class FilesystemArtifact(BaseModel):
 
 Evaluators that need to *read* changed file contents can do so via `artifacts_path`, which is a copy made during `cleanup()` so the source workspace can be torn down.
 
+### Artifacts ship through `ObjectStorage` (v2)
+
+Each workspace adapter (`tempdir_snapshot`, `git`, `docker_volume`) accepts an optional `object_storage` parameter. When set, the built `FilesystemArtifact` is uploaded via the storage's `put(key, data)` call at the stable key `<case>/<variant>/artifact.json`, and `artifacts_path` is rewritten to the storage URL (`file://…`, `s3://…`, `memory://…`, etc.). The artifact's *pydantic shape* is unchanged — evaluators read `artifact.artifacts_path` the same way; only the bytes-mover differs.
+
+The default for single-machine `evalh run` is a local `file://` storage rooted at `runs/<run_id>/artifacts/`, which preserves the existing layout — nobody has to opt in to anything. Distributed executors (v2 K8s / Modal / Ray) point `object_storage` at an `s3://` / `gs://` / `az://` URL so workers in containers can ship artifacts back to one place. The fsspec-backed `FsspecObjectStorage` handles every protocol; cloud-specific extras pull the matching fsspec backend (`[s3]` → `s3fs`, `[gcs]` → `gcsfs`, `[azure]` → `adlfs`).
+
 ---
 
 ## Filesystem-aware evaluators
