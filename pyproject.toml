@@ -85,6 +85,11 @@ ray      = ["ray>=2,<3"]
 # against. Users with an existing AMQP broker (RabbitMQ) swap the
 # `broker_url` in their eval.yaml without changing the extra.
 celery   = ["celery>=5,<6", "redis>=5,<7"]
+# Kubernetes Jobs executor (v2): each cell becomes a batch/v1 Job. The
+# official Python client carries its own openapi-generated models; we
+# pass dict manifests through it so the runtime only needs the client
+# transport, not the model classes.
+kubernetes = ["kubernetes>=29,<32"]
 # Cloud backends for FsspecObjectStorage. Each pulls fsspec's
 # protocol-specific package; no per-cloud code lives in eval-harness
 # because fsspec already abstracts the differences.
@@ -118,6 +123,11 @@ all = [
 
 [project.scripts]
 evalh = "eval_harness.cli.main:cli"
+# Pod entrypoint for the kubernetes executor — each K8s Job runs this
+# console-script inside the worker container. Reads the cell payload
+# from env / configmap and writes the outcome JSON to the configured
+# ObjectStorage key so the orchestrator can read it back.
+evalh-cell-worker = "eval_harness.core.executors._worker_main:main"
 
 # Built-in adapters and evaluators register here. Third-party extensions
 # register the same way in their own pyproject.toml. See docs/Adapters.md
@@ -189,10 +199,11 @@ claude = "eval_harness.core.llm_backends.anthropic:AnthropicLlmBackend"
 # distributed executors (Modal / K8s / Celery / Ray) register from their
 # own packages in subsequent beads.
 [project.entry-points."eval_harness.executors"]
-local  = "eval_harness.core.executors.local:LocalExecutor"
-modal  = "eval_harness.core.executors.modal_executor:ModalExecutor"
-ray    = "eval_harness.core.executors.ray_executor:RayExecutor"
-celery = "eval_harness.core.executors.celery_executor:CeleryExecutor"
+local      = "eval_harness.core.executors.local:LocalExecutor"
+modal      = "eval_harness.core.executors.modal_executor:ModalExecutor"
+ray        = "eval_harness.core.executors.ray_executor:RayExecutor"
+celery     = "eval_harness.core.executors.celery_executor:CeleryExecutor"
+kubernetes = "eval_harness.core.executors.k8s_executor:KubernetesJobsExecutor"
 
 # Sixth adapter family — TraceEnricher. Built-ins ship the OTel enricher
 # v1-supplement; Langfuse / Phoenix register their concrete enrichers in
@@ -247,6 +258,7 @@ markers = [
   "modal: tests that require a configured Modal account (cloud-deployed cell execution); skipped otherwise",
   "ray: tests that exercise the Ray executor (use Ray's in-process mode; require the [ray] extra); skipped otherwise",
   "celery: tests that exercise the Celery executor (require a reachable broker; honour EVALH_TEST_REDIS_URL); skipped otherwise",
+  "kubernetes: tests that exercise the K8s Jobs executor against a real cluster (kind/minikube); require kubectl + EVALH_TEST_K8S_CONTEXT; skipped otherwise",
 ]
 
 [tool.ruff]

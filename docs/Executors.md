@@ -105,6 +105,89 @@ K8s).
 
 ---
 
+## Kubernetes Jobs executor
+
+`KubernetesJobsExecutor` registers as `kubernetes` under the
+`eval_harness.executors` entry-point group when the `[kubernetes]` extra
+is installed. Each cell becomes a `batch/v1` Job whose pod runs the
+`evalh-cell-worker` console-script. Highest startup cost of the built-in
+executors (image pull + pod spin-up dominate fast cells) but the most
+production-realistic shape for shops that already run K8s.
+
+### Deployment recipe
+
+1. Build a container image carrying `eval-harness` plus your plugin
+   packages and any extras the run needs (`anthropic`, `openai`, your
+   custom adapters, …). The orchestrator and pod must resolve the same
+   entry-point set — that's the contract.
+
+   ```dockerfile
+   FROM python:3.12-slim
+   RUN pip install --no-cache-dir 'eval-harness[anthropic]' my-plugin-package
+   ENTRYPOINT ["evalh-cell-worker"]
+   ```
+
+2. Decide where the pod writes its outcome JSON. Anything fsspec can
+   reach works — typically `s3://...`, `gs://...`, or a shared
+   `file://` mount when the cluster has one. The orchestrator reads the
+   same URL.
+
+3. Configure the run:
+
+   ```yaml
+   run:
+     executor:
+       type: kubernetes
+       config:
+         image: ghcr.io/your-org/evalh-worker:2026.05
+         namespace: evals
+         service_account: evalh-worker
+         resources:
+           requests: { cpu: "500m", memory: "1Gi" }
+           limits:   { cpu: "2",    memory: "4Gi" }
+         object_storage:
+           url: s3://your-bucket/evalh-runs
+         poll_interval_seconds: 2
+         timeout_seconds: 1800
+   ```
+
+   The pod runs `evalh-cell-worker` as its container command (set by the
+   executor — your image's `ENTRYPOINT` can be the same or omitted).
+
+4. RBAC: the orchestrator needs `create / get / delete` on
+   `batch/v1/jobs` and `core/v1/configmaps` in `namespace`. The pod's
+   service account needs read access to whatever Secret carries the
+   ObjectStorage credentials.
+
+### Payload routing
+
+Cell payloads ≤ 32 KiB ride a single `EVALH_CELL_PAYLOAD` env var. Above
+that, the executor creates a backing `ConfigMap` and mounts it at
+`/etc/evalh/cell.json`; the pod reads `EVALH_CELL_PAYLOAD_PATH` to find
+it. Pod env limits are aggregate ~1 MB, so 32 KiB leaves headroom for
+the storage URL + credentials + timeout env vars and avoids admission
+controllers that cap individual values lower.
+
+### Result piping
+
+`await_outcome` polls `read_namespaced_job_status` every
+`poll_interval_seconds` until the Job reaches `Complete` / `Failed`,
+then reads the outcome JSON from `cells/<cell_id>/outcome.json` under
+the configured `object_storage.url`. Job + ConfigMap are deleted after
+the outcome is fetched (best-effort — `ttlSecondsAfterFinished` is the
+backstop for orphans).
+
+### Trade-offs
+
+The Job-per-cell model is wasteful for fast cells (pod startup
+dominates). It's the right shape for slow cells — LLM evals where each
+call is multiple seconds — and the right shape for clusters where each
+pod gets its own image / IAM / secrets without your orchestrator caring.
+Shops that want denser packing can write a custom Executor that batches
+cells per pod; that's their judgement call, not the default.
+
+---
+
 ## Subsequent v2 beads
 
 - **Local executor + capacity pools + 10K perf gate** — the in-process
