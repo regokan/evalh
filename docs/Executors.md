@@ -225,3 +225,33 @@ running independently of the orchestrator. The integration test
 (``@pytest.mark.celery``) honours ``EVALH_TEST_REDIS_URL`` — set it to
 a reachable Redis URL to run the live-broker tests; CI excludes the
 marker by default because CI workflows don't ship a Redis service.
+
+---
+
+## RayExecutor
+
+Each cell becomes a ``ray.remote`` task. Ray's local-cluster mode is
+sufficient for the integration tests when the host has a reasonable
+``/dev/shm``; the ``RayExecutor`` config knob ``object_store_memory``
+defaults to ~75 MiB so a single-machine boot fits inside small shared-
+memory budgets. Real-cluster runs are driven by the manual benchmark
+(``benchmarks/distributed_1m.py``).
+
+```yaml
+run:
+  executor:
+    type: ray
+    address: auto                              # connect to running cluster
+    runtime_env:
+      pip: ["eval-harness", "my-plugin"]       # entry-point set must match
+    num_cpus_per_cell: 1
+    num_gpus_per_cell: null
+    object_store_memory: null                  # auto-size on real clusters
+```
+
+**CI posture:** ``@pytest.mark.ray`` tests require a real Ray cluster
+or a Linux dev environment with sufficient ``/dev/shm``. CI does NOT
+run ``@pytest.mark.ray`` (same posture as ``@pytest.mark.modal`` and
+``@pytest.mark.kubernetes``): GitHub Actions runners can't fork Ray
+workers reliably even with a reduced plasma store, so the marker is
+excluded from the workflow and verified locally instead.

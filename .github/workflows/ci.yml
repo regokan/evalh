@@ -78,11 +78,12 @@ jobs:
           fi
 
   distributed:
-    # Distributed-executor markers that CAN run in CI: Ray (in-process
-    # mode, no cluster) and Celery (against a Redis service container).
-    # Modal needs a configured Modal account and Kubernetes needs a real
-    # cluster; both are documented in docs/CI.md for local-run.
-    name: distributed executors (ray + celery)
+    # Distributed-executor markers that CAN run in CI: Celery (against a
+    # Redis service container). Ray, Modal, and Kubernetes need real
+    # infrastructure — Ray workers can't fork inside GHA's runner even
+    # with a reduced plasma-store size; see docs/Executors.md for the
+    # local-run recipes.
+    name: distributed executors (celery)
     runs-on: ubuntu-latest
     services:
       redis:
@@ -113,15 +114,15 @@ jobs:
         run: uv python install 3.11
 
       - name: Install eval-harness with distributed extras
-        # Ray + Celery are the two extras with viable CI smokes. Modal +
-        # Kubernetes need cloud / cluster access (docs/CI.md covers the
-        # local-run recipes).
+        # Celery is the only distributed extra with a viable CI smoke.
+        # Ray, Modal, and Kubernetes need infrastructure CI doesn't
+        # provide; docs/Executors.md covers the local-run recipes.
         run: |
-          uv sync --extra anthropic --extra sqlite --extra ray --extra celery --no-dev
+          uv sync --extra anthropic --extra sqlite --extra celery --no-dev
           uv pip install pytest pytest-asyncio pytest-cov respx ruff mypy types-PyYAML
 
-      - name: pytest -m "ray or celery"
-        run: uv run --no-sync pytest tests/ -q -m "ray or celery"
+      - name: pytest -m celery
+        run: uv run --no-sync pytest tests/ -q -m celery
 
   typecheck:
     name: mypy --strict (py3.11)
