@@ -49,6 +49,11 @@ langfuse = ["langfuse>=2"]
 # directly and doesn't import the SDK — this dep is for users who want the
 # Phoenix OpenInference instrumentation helpers alongside our adapter.
 phoenix  = ["arize-phoenix-otel>=0.6,<1 ; python_version < '3.15'"]
+# Arize OTel exporter helpers. Mirrors the phoenix extra: the runtime code
+# uses httpx + OtelClient directly and doesn't import the SDK — this dep
+# is for users who want the Arize OpenInference instrumentation helpers
+# alongside our adapter.
+arize    = ["arize-otel>=0.7,<1 ; python_version < '3.15'"]
 git      = ["pygit2>=1.15"]
 docker   = ["docker>=7"]
 otel     = ["opentelemetry-sdk>=1.27", "opentelemetry-exporter-otlp>=1.27"]
@@ -65,6 +70,7 @@ all = [
   "asyncpg>=0.29",
   "langfuse>=2",
   "arize-phoenix-otel>=0.6,<1 ; python_version < '3.15'",
+  "arize-otel>=0.7,<1 ; python_version < '3.15'",
   "pygit2>=1.15",
   "docker>=7",
   "opentelemetry-sdk>=1.27",
@@ -115,6 +121,7 @@ jsonl    = "eval_harness.adapters.dataset.jsonl_dataset_adapter:JsonlDatasetAdap
 fixture  = "eval_harness.adapters.dataset.fixture_dataset_adapter:FixtureDatasetAdapter"
 langfuse = "eval_harness.adapters.dataset.langfuse_dataset_adapter:LangfuseDatasetAdapter"
 phoenix  = "eval_harness.adapters.dataset.phoenix_dataset_adapter:PhoenixDatasetAdapter"
+arize    = "eval_harness.adapters.dataset.arize_dataset_adapter:ArizeDatasetAdapter"
 
 [project.entry-points."eval_harness.trace_stores"]
 local_files = "eval_harness.adapters.trace.local_files_store:LocalFilesStore"
@@ -123,6 +130,7 @@ postgres    = "eval_harness.adapters.trace.postgres_store:PostgresStore"
 otel        = "eval_harness.adapters.trace.otel_trace_store:OtelTraceStore"
 langfuse    = "eval_harness.adapters.trace.langfuse_trace_store:LangfuseTraceStore"
 phoenix     = "eval_harness.adapters.trace.phoenix_trace_store:PhoenixTraceStore"
+arize       = "eval_harness.adapters.trace.arize_trace_store:ArizeTraceStore"
 
 [project.entry-points."eval_harness.workspaces"]
 tempdir_snapshot = "eval_harness.adapters.workspace.tempdir_snapshot_adapter:TempdirSnapshotAdapter"
@@ -142,6 +150,7 @@ claude = "eval_harness.core.llm_backends.anthropic:AnthropicLlmBackend"
 otel     = "eval_harness.adapters.enricher.otel_enricher:OtelTraceEnricher"
 langfuse = "eval_harness.adapters.enricher.langfuse_enricher:LangfuseTraceEnricher"
 phoenix  = "eval_harness.adapters.enricher.phoenix_enricher:PhoenixTraceEnricher"
+arize    = "eval_harness.adapters.enricher.arize_enricher:ArizeTraceEnricher"
 
 [project.urls]
 Homepage = "https://github.com/regokan/evalh"

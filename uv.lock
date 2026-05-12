@@ -67,6 +67,41 @@ wheels = [
 ]
 
 [[package]]
+name = "arize-otel"
+version = "0.12.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "openinference-instrumentation" },
+    { name = "openinference-semantic-conventions" },
+    { name = "opentelemetry-exporter-otlp" },
+    { name = "opentelemetry-proto" },
+    { name = "opentelemetry-sdk" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/06/b0/c216d72ef4325f2a2a053f7627628e35229f41ae95abd6d9901f6342ac07/arize_otel-0.12.0.tar.gz", hash = "sha256:c35ce05901d3e95fd889f467535ec4993887eea7ea82f25d60596682c53fca89", size = 15805 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/2e/4d/e956199649231bf04ac3e97167d4bddd59b14be84ca6bedb6ef91f6774fc/arize_otel-0.12.0-py3-none-any.whl", hash = "sha256:a00eb772f1ae47452594e1d58012d1d1a41009eae43a80fa6fd793117d4c08b7", size = 16841 },
+]
+
+[[package]]
+name = "arize-phoenix-otel"
+version = "0.16.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "openinference-instrumentation" },
+    { name = "openinference-semantic-conventions" },
+    { name = "opentelemetry-exporter-otlp" },
+    { name = "opentelemetry-proto" },
+    { name = "opentelemetry-sdk" },
+    { name = "opentelemetry-semantic-conventions" },
+    { name = "typing-extensions" },
+    { name = "wrapt" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/37/97/5aef2776ee17eacb24a82de719312008ca0a16b915415cc9363a9a9b1536/arize_phoenix_otel-0.16.1.tar.gz", hash = "sha256:28ba1d43dcd2dc556f6cac25622c3333e613e2cf1d687832a9ed5ce2c20e17be", size = 20933 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ee/2e/e495446a8a715d9892a4dbc56e11b18fb6f07a634182babc0b0ac6827d9c/arize_phoenix_otel-0.16.1-py3-none-any.whl", hash = "sha256:eb71f7be8d94e68f5cd82b134f7ea1710fa73374bf0d8d663ce6242332871ff9", size = 18033 },
+]
+
+[[package]]
 name = "asyncpg"
 version = "0.31.0"
 source = { registry = "https://pypi.org/simple" }
@@ -443,6 +478,8 @@ dependencies = [
 all = [
     { name = "aiosqlite" },
     { name = "anthropic" },
+    { name = "arize-otel", marker = "python_full_version < '3.15'" },
+    { name = "arize-phoenix-otel", marker = "python_full_version < '3.15'" },
     { name = "asyncpg" },
     { name = "docker" },
     { name = "langfuse" },
@@ -454,6 +491,9 @@ all = [
 ]
 anthropic = [
     { name = "anthropic" },
+]
+arize = [
+    { name = "arize-otel", marker = "python_full_version < '3.15'" },
 ]
 docker = [
     { name = "docker" },
@@ -474,6 +514,9 @@ otel = [
     { name = "opentelemetry-exporter-otlp" },
     { name = "opentelemetry-sdk" },
 ]
+phoenix = [
+    { name = "arize-phoenix-otel", marker = "python_full_version < '3.15'" },
+]
 postgres = [
     { name = "asyncpg" },
 ]
@@ -487,6 +530,10 @@ requires-dist = [
     { name = "aiosqlite", marker = "extra == 'sqlite'", specifier = ">=0.20" },
     { name = "anthropic", marker = "extra == 'all'", specifier = ">=0.40,<1" },
     { name = "anthropic", marker = "extra == 'anthropic'", specifier = ">=0.40,<1" },
+    { name = "arize-otel", marker = "python_full_version < '3.15' and extra == 'all'", specifier = ">=0.7,<1" },
+    { name = "arize-otel", marker = "python_full_version < '3.15' and extra == 'arize'", specifier = ">=0.7,<1" },
+    { name = "arize-phoenix-otel", marker = "python_full_version < '3.15' and extra == 'all'", specifier = ">=0.6,<1" },
+    { name = "arize-phoenix-otel", marker = "python_full_version < '3.15' and extra == 'phoenix'", specifier = ">=0.6,<1" },
     { name = "asyncpg", marker = "extra == 'all'", specifier = ">=0.29" },
     { name = "asyncpg", marker = "extra == 'postgres'", specifier = ">=0.29" },
     { name = "click", specifier = ">=8.1,<9" },
@@ -512,7 +559,7 @@ requires-dist = [
     { name = "sentence-transformers", marker = "extra == 'all'", specifier = ">=3,<6" },
     { name = "sentence-transformers", marker = "extra == 'embeddings-local'", specifier = ">=3,<6" },
 ]
-provides-extras = ["anthropic", "openai", "sqlite", "postgres", "langfuse", "git", "docker", "otel", "embeddings-local", "all"]
+provides-extras = ["anthropic", "openai", "sqlite", "postgres", "langfuse", "phoenix", "arize", "git", "docker", "otel", "embeddings-local", "all"]
 
 [[package]]
 name = "filelock"
@@ -1230,6 +1277,30 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/c6/a1/a303104dc55fc546a3f6914c842d3da471c64eec92043aef8f652eb6c524/openai-1.109.1.tar.gz", hash = "sha256:d173ed8dbca665892a6db099b4a2dfac624f94d20a93f46eb0b56aae940ed869", size = 564133 }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/1d/2a/7dd3d207ec669cacc1f186fd856a0f61dbc255d24f6fdc1a6715d6051b0f/openai-1.109.1-py3-none-any.whl", hash = "sha256:6bcaf57086cf59159b8e27447e4e7dd019db5d29a438072fbd49c290c7e65315", size = 948627 },
+]
+
+[[package]]
+name = "openinference-instrumentation"
+version = "0.1.50"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "openinference-semantic-conventions" },
+    { name = "opentelemetry-api" },
+    { name = "opentelemetry-sdk" },
+    { name = "wrapt" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/cd/bc/9126db2e991304d05e777c3cd107580cc1e721f2db91586dda09db7600f2/openinference_instrumentation-0.1.50.tar.gz", hash = "sha256:3ce2e19bc832cbfc5e141a1a78d6f5f9547b98ddfaecf8128edd2b5e6ed5c6e6", size = 24788 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/02/0f/1eba26ef9599a69e08c60df0d9826a7530fa019ad4da66a9d6d9f1841ff1/openinference_instrumentation-0.1.50-py3-none-any.whl", hash = "sha256:e757e308df590f393d02b1cfcbd934d728cf876fca2f4432b2e7052ae9b64622", size = 31002 },
+]
+
+[[package]]
+name = "openinference-semantic-conventions"
+version = "0.1.29"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/15/6b/9ed67f9ce8c92436b297207abde730800b00bdec7e114f71b8dfe91cd26b/openinference_semantic_conventions-0.1.29.tar.gz", hash = "sha256:bbeb6472777a45a574169894bb9c4d80c6832a8befd32ab238cb875438ce1044", size = 12959 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/be/7b/45ad1b95315b5563baa7338c8e8088bb1af66905c46e1bd1fe6ecbe30ea8/openinference_semantic_conventions-0.1.29-py3-none-any.whl", hash = "sha256:f45e0b1cf79fe407af4722bcf391a01565f0878c95be3ebcc9382245d0367cc5", size = 10582 },
 ]
 
 [[package]]
