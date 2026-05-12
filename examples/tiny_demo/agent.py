@@ -12,15 +12,24 @@ genuine LLM-driven agent.
 
 Used by examples/tiny_demo/eval.yaml via the `python_function` SystemAdapter.
 
-Requires: `ANTHROPIC_API_KEY` in the environment.
+Requires `ANTHROPIC_API_KEY`. Picked up from either:
+  - the shell environment, or
+  - a `.env` file next to this script (examples/tiny_demo/.env).
+The `.env` file is gitignored repo-wide; keep your key there for local runs.
 """
 
 from __future__ import annotations
 import json
 import os
+from pathlib import Path
 from typing import Any
 
 from anthropic import AsyncAnthropic
+from dotenv import load_dotenv
+
+
+# Load examples/tiny_demo/.env if present. Shell env wins over .env on conflict.
+load_dotenv(Path(__file__).parent / ".env", override=False)
 
 
 # Hardcoded "listings database" — three rows. Real-world: a Postgres query
@@ -84,7 +93,8 @@ async def run(case: dict, variant: dict | None = None) -> dict:
     """
     if not os.environ.get("ANTHROPIC_API_KEY"):
         raise RuntimeError(
-            "tiny_demo/agent.py requires ANTHROPIC_API_KEY in the environment. "
+            "tiny_demo/agent.py requires ANTHROPIC_API_KEY. Either export it in "
+            "your shell, or drop it into examples/tiny_demo/.env (gitignored). "
             "This example calls a real LLM by design — Eval Harness is for "
             "evaluating stochastic systems."
         )

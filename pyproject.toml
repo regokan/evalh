@@ -3,7 +3,7 @@ name = "eval-harness"
 version = "0.0.1"
 description = "A boring, config-driven harness for evaluating AI systems."
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.11,<4"
 license = { text = "MIT" }
 authors = [{ name = "Eval Harness contributors" }]
 keywords = ["llm", "evaluation", "agents", "eval", "harness"]
@@ -30,6 +30,7 @@ dependencies = [
   "click>=8.1,<9",
   "rich>=13,<14",
   "jsonpath-ng>=1.6,<2",
+  "python-dotenv>=1,<2",
 ]
 
 [project.optional-dependencies]
