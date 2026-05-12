@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Documentation
+    url: https://github.com/regokan/evalh/tree/main/docs
+    about: Browse docs/ — architecture, data model, adapter contracts, CLI reference, observability integrations.
+  - name: Discussions
+    url: https://github.com/regokan/evalh/discussions
+    about: Ask a question, share a config, or propose an idea.
