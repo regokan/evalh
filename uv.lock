@@ -596,7 +596,7 @@ requires-dist = [
     { name = "sentence-transformers", marker = "extra == 'all'", specifier = ">=3,<6" },
     { name = "sentence-transformers", marker = "extra == 'embeddings-local'", specifier = ">=3,<6" },
 ]
-provides-extras = ["anthropic", "openai", "sqlite", "postgres", "langfuse", "phoenix", "arize", "braintrust", "git", "docker", "otel", "embeddings-local", "all"]
+provides-extras = ["anthropic", "openai", "sqlite", "postgres", "langfuse", "phoenix", "arize", "helicone", "braintrust", "git", "docker", "otel", "embeddings-local", "all"]
 
 [[package]]
 name = "exceptiongroup"
