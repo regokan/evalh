@@ -253,6 +253,29 @@ Backends implement the `LlmBackend` protocol from `eval_harness.core.llm_backend
 
 The legacy `eval_harness.judge_backends` entry-point group is still discovered for backwards compatibility — backends registered there are auto-wrapped to the new `LlmBackend` shape. New code should register under `eval_harness.llm_backends`.
 
+### `semantic_similarity`
+
+```yaml
+- name: answer_matches_reference
+  type: semantic_similarity
+  embedder_name: openai-text-embedding-3-small
+  reference_path: $.case.expected.facts.canonical_answer
+  threshold: 0.85
+  field: output.final_answer
+```
+
+Cosine similarity between an embedding of the answer field and an embedding of the reference. Use it when an LLM-as-judge is overkill and exact-string matching is too brittle. Either `reference_text` (literal string) or `reference_path` (JSONPath into the case) supplies the reference.
+
+**No default embedder ships.** Pick one based on the cost / size tradeoff:
+
+| `embedder_name` | Install | Notes |
+|---|---|---|
+| `openai-text-embedding-3-small` | `pip install 'eval-harness[openai]'` | API-backed; costs scale with cases |
+| `sentence-transformers/all-MiniLM-L6-v2` | `pip install 'eval-harness[embeddings_local]'` | ~80 MB local model; first run downloads weights |
+| custom | register via `eval_harness.embedders` entry-point | implement `async embed(text) -> list[float]` |
+
+Without either extra installed, the evaluator raises `ConfigError` at plan time naming the extras — silently picking a different embedder would be worse than a load-time failure.
+
 ### Why these three for v0
 
 These three cover ~80% of evals:

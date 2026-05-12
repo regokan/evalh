@@ -48,6 +48,11 @@ git      = ["pygit2>=1.15"]
 docker   = ["docker>=7"]
 otel     = ["opentelemetry-sdk>=1.27", "opentelemetry-exporter-otlp>=1.27"]
 
+# Embedder backends for the `semantic_similarity` evaluator. NO default is
+# shipped — pick one based on the cost/size tradeoff. `[openai]` adds an
+# API-backed embedder; `[embeddings_local]` adds a small (~80MB) local model.
+embeddings_local = ["sentence-transformers>=3,<6"]
+
 all = [
   "anthropic>=0.40,<1",
   "openai>=1.40,<2",
@@ -58,6 +63,7 @@ all = [
   "docker>=7",
   "opentelemetry-sdk>=1.27",
   "opentelemetry-exporter-otlp>=1.27",
+  "sentence-transformers>=3,<6",
 ]
 
 [project.scripts]
@@ -88,6 +94,11 @@ command       = "eval_harness.evaluators.command:CommandEvaluator"
 thinking_tokens_under  = "eval_harness.evaluators.thinking_tokens_under:ThinkingTokensUnderEvaluator"
 thinking_present       = "eval_harness.evaluators.thinking_present:ThinkingPresentEvaluator"
 thinking_does_not_leak = "eval_harness.evaluators.thinking_does_not_leak:ThinkingDoesNotLeakEvaluator"
+semantic_similarity    = "eval_harness.evaluators.semantic_similarity:SemanticSimilarityEvaluator"
+
+[project.entry-points."eval_harness.embedders"]
+"openai-text-embedding-3-small"           = "eval_harness.evaluators._embedders.openai:OpenAIEmbedder"
+"sentence-transformers/all-MiniLM-L6-v2"  = "eval_harness.evaluators._embedders.sentence_transformers:SentenceTransformersEmbedder"
 
 [project.entry-points."eval_harness.dataset_adapters"]
 yaml    = "eval_harness.adapters.dataset.yaml_dataset_adapter:YamlDatasetAdapter"
