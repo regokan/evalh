@@ -14,7 +14,7 @@ from eval_harness.core.errors import ConfigError
 _ENV_VAR_RE = re.compile(r"\$\{([A-Z_][A-Z0-9_]*)(?::-([^}]*))?\}")
 
 
-class _StrictBoolLoader(yaml.SafeLoader):  # type: ignore[misc]
+class _StrictBoolLoader(yaml.SafeLoader):
     """SafeLoader that only treats true/false (any case) as booleans.
 
     Prevents YAML 1.1 from coercing `on`, `off`, `yes`, `no` to booleans —
@@ -28,7 +28,9 @@ _StrictBoolLoader.yaml_implicit_resolvers = {
     ch: [r for r in resolvers if r[0] != "tag:yaml.org,2002:bool"]
     for ch, resolvers in yaml.SafeLoader.yaml_implicit_resolvers.items()
 }
-_StrictBoolLoader.add_implicit_resolver(
+# why-untyped-call: PyYAML's add_implicit_resolver is typed but its stub marks
+# the classmethod as untyped; calling it is safe and unavoidable here.
+_StrictBoolLoader.add_implicit_resolver(  # type: ignore[no-untyped-call]
     "tag:yaml.org,2002:bool",
     re.compile(r"^(?:true|True|TRUE|false|False|FALSE)$"),
     list("tTfF"),

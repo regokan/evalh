@@ -19,6 +19,7 @@ The `.env` file is gitignored repo-wide; keep your key there for local runs.
 """
 
 from __future__ import annotations
+
 import json
 import os
 from pathlib import Path
@@ -26,7 +27,6 @@ from typing import Any
 
 from anthropic import AsyncAnthropic
 from dotenv import load_dotenv
-
 
 # Load examples/tiny_demo/.env if present. Shell env wins over .env on conflict.
 load_dotenv(Path(__file__).parent / ".env", override=False)
