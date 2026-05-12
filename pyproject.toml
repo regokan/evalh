@@ -76,6 +76,10 @@ docker   = ["docker>=7"]
 otel     = ["opentelemetry-sdk>=1.27", "opentelemetry-exporter-otlp>=1.27"]
 # Modal executor (v2): each cell becomes a modal.Function call.
 modal    = ["modal>=1,<2"]
+# Ray executor (v2): each cell becomes a ray.remote task. Ray ships an
+# in-process mode so the integration test runs without a real cluster;
+# real cluster runs are the manual benchmark.
+ray      = ["ray>=2,<3"]
 # Cloud backends for FsspecObjectStorage. Each pulls fsspec's
 # protocol-specific package; no per-cloud code lives in eval-harness
 # because fsspec already abstracts the differences.
@@ -180,6 +184,7 @@ claude = "eval_harness.core.llm_backends.anthropic:AnthropicLlmBackend"
 [project.entry-points."eval_harness.executors"]
 local = "eval_harness.core.executors.local:LocalExecutor"
 modal = "eval_harness.core.executors.modal_executor:ModalExecutor"
+ray   = "eval_harness.core.executors.ray_executor:RayExecutor"
 
 # Sixth adapter family — TraceEnricher. Built-ins ship the OTel enricher
 # v1-supplement; Langfuse / Phoenix register their concrete enrichers in
@@ -232,6 +237,7 @@ markers = [
   "docker: tests that require a reachable Docker daemon (docker SystemAdapter, docker_volume workspace adapter); skipped otherwise",
   "s3: tests that require an s3-compatible backend (FsspecObjectStorage against moto / minio); skipped otherwise",
   "modal: tests that require a configured Modal account (cloud-deployed cell execution); skipped otherwise",
+  "ray: tests that exercise the Ray executor (use Ray's in-process mode; require the [ray] extra); skipped otherwise",
 ]
 
 [tool.ruff]
