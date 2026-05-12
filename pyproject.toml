@@ -86,6 +86,7 @@ sqlite      = "eval_harness.adapters.trace.sqlite_store:SqliteStore"
 
 [project.entry-points."eval_harness.workspaces"]
 tempdir_snapshot = "eval_harness.adapters.workspace.tempdir_snapshot_adapter:TempdirSnapshotAdapter"
+git              = "eval_harness.adapters.workspace.git_workspace_adapter:GitWorkspaceAdapter"
 
 [project.entry-points."eval_harness.judge_backends"]
 claude = "eval_harness.evaluators._judge_backends.anthropic_backend:AnthropicJudgeBackend"
