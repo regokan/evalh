@@ -109,6 +109,7 @@ fixture = "eval_harness.adapters.dataset.fixture_dataset_adapter:FixtureDatasetA
 local_files = "eval_harness.adapters.trace.local_files_store:LocalFilesStore"
 sqlite      = "eval_harness.adapters.trace.sqlite_store:SqliteStore"
 postgres    = "eval_harness.adapters.trace.postgres_store:PostgresStore"
+otel        = "eval_harness.adapters.trace.otel_trace_store:OtelTraceStore"
 
 [project.entry-points."eval_harness.workspaces"]
 tempdir_snapshot = "eval_harness.adapters.workspace.tempdir_snapshot_adapter:TempdirSnapshotAdapter"
@@ -121,10 +122,11 @@ claude = "eval_harness.core.llm_backends.anthropic:AnthropicLlmBackend"
 # discovered at runtime for third-party plugins; their backends are wrapped to
 # the `LlmBackend` interface. New code registers under `eval_harness.llm_backends`.
 
-# Sixth adapter family — TraceEnricher. Built-ins ship empty for the
-# foundation bead; the v1-supplement OTel / Langfuse / Phoenix beads
-# register their concrete enrichers here.
+# Sixth adapter family — TraceEnricher. Built-ins ship the OTel enricher
+# v1-supplement; Langfuse / Phoenix register their concrete enrichers in
+# subsequent beads.
 [project.entry-points."eval_harness.trace_enrichers"]
+otel = "eval_harness.adapters.enricher.otel_enricher:OtelTraceEnricher"
 
 [project.urls]
 Homepage = "https://github.com/regokan/evalh"
