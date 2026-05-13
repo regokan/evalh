@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/regokan/evalh/actions/workflows/ci.yml/badge.svg)](https://github.com/regokan/evalh/actions/workflows/ci.yml)
 [![PyPI](https://img.shields.io/pypi/v/eval-harness.svg)](https://pypi.org/project/eval-harness/)
-[![PyPI - Downloads](https://img.shields.io/pypi/dm/eval-harness.svg)](https://pypi.org/project/eval-harness/)
+[![PyPI - Downloads](https://img.shields.io/pypi/dm/eval-harness)](https://pypi.org/project/eval-harness/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/)
 
