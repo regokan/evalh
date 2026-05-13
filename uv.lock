@@ -250,11 +250,11 @@ name = "arize-otel"
 version = "0.12.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "openinference-instrumentation" },
-    { name = "openinference-semantic-conventions" },
-    { name = "opentelemetry-exporter-otlp" },
-    { name = "opentelemetry-proto" },
-    { name = "opentelemetry-sdk" },
+    { name = "openinference-instrumentation", marker = "python_full_version < '3.15'" },
+    { name = "openinference-semantic-conventions", marker = "python_full_version < '3.15'" },
+    { name = "opentelemetry-exporter-otlp", marker = "python_full_version < '3.15'" },
+    { name = "opentelemetry-proto", marker = "python_full_version < '3.15'" },
+    { name = "opentelemetry-sdk", marker = "python_full_version < '3.15'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/06/b0/c216d72ef4325f2a2a053f7627628e35229f41ae95abd6d9901f6342ac07/arize_otel-0.12.0.tar.gz", hash = "sha256:c35ce05901d3e95fd889f467535ec4993887eea7ea82f25d60596682c53fca89", size = 15805 }
 wheels = [
@@ -266,14 +266,14 @@ name = "arize-phoenix-otel"
 version = "0.16.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "openinference-instrumentation" },
-    { name = "openinference-semantic-conventions" },
-    { name = "opentelemetry-exporter-otlp" },
-    { name = "opentelemetry-proto" },
-    { name = "opentelemetry-sdk" },
-    { name = "opentelemetry-semantic-conventions" },
-    { name = "typing-extensions" },
-    { name = "wrapt" },
+    { name = "openinference-instrumentation", marker = "python_full_version < '3.15'" },
+    { name = "openinference-semantic-conventions", marker = "python_full_version < '3.15'" },
+    { name = "opentelemetry-exporter-otlp", marker = "python_full_version < '3.15'" },
+    { name = "opentelemetry-proto", marker = "python_full_version < '3.15'" },
+    { name = "opentelemetry-sdk", marker = "python_full_version < '3.15'" },
+    { name = "opentelemetry-semantic-conventions", marker = "python_full_version < '3.15'" },
+    { name = "typing-extensions", marker = "python_full_version < '3.15'" },
+    { name = "wrapt", marker = "python_full_version < '3.15'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/37/97/5aef2776ee17eacb24a82de719312008ca0a16b915415cc9363a9a9b1536/arize_phoenix_otel-0.16.1.tar.gz", hash = "sha256:28ba1d43dcd2dc556f6cac25622c3333e613e2cf1d687832a9ed5ce2c20e17be", size = 20933 }
 wheels = [
@@ -1043,7 +1043,7 @@ wheels = [
 
 [[package]]
 name = "eval-harness"
-version = "2.0.1"
+version = "2.0.2"
 source = { editable = "." }
 dependencies = [
     { name = "click" },
@@ -2749,10 +2749,10 @@ name = "openinference-instrumentation"
 version = "0.1.50"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "openinference-semantic-conventions" },
-    { name = "opentelemetry-api" },
-    { name = "opentelemetry-sdk" },
-    { name = "wrapt" },
+    { name = "openinference-semantic-conventions", marker = "python_full_version < '3.15'" },
+    { name = "opentelemetry-api", marker = "python_full_version < '3.15'" },
+    { name = "opentelemetry-sdk", marker = "python_full_version < '3.15'" },
+    { name = "wrapt", marker = "python_full_version < '3.15'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/cd/bc/9126db2e991304d05e777c3cd107580cc1e721f2db91586dda09db7600f2/openinference_instrumentation-0.1.50.tar.gz", hash = "sha256:3ce2e19bc832cbfc5e141a1a78d6f5f9547b98ddfaecf8128edd2b5e6ed5c6e6", size = 24788 }
 wheels = [

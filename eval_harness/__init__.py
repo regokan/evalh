@@ -8,4 +8,4 @@ from __future__ import annotations
 from eval_harness import adapters as adapters
 from eval_harness import evaluators as evaluators
 
-__version__ = "2.0.1"
+__version__ = "2.0.2"
