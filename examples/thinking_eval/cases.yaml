@@ -1,0 +1,34 @@
+# Thinking-eval cases.
+#
+# Two contrasting cases by design:
+#   - `tk_logic_puzzle` is non-trivial and rewards extended thinking. We expect
+#     `metrics.token_thinking` to be substantial here.
+#   - `tk_trivial_capital` is a one-shot factual lookup. With extended thinking
+#     enabled the model still emits *some* thinking, but it should be near
+#     zero — surfaces budget waste if the model over-thinks the trivial path.
+#
+# Synthetic problems only; no real customer data.
+
+schema_version: "1.0"
+
+dataset:
+  name: thinking_eval_v1
+  description: "Two cases that contrast 'thinking helps' vs 'thinking should be near-zero'."
+
+cases:
+  - id: tk_logic_puzzle
+    input:
+      user_message: |
+        A farmer has a pen containing only chickens and rabbits. There are 35
+        heads and 94 legs in total. How many chickens and how many rabbits are
+        in the pen? Show only the final counts — no working in the answer.
+    metadata:
+      kind: non_trivial
+      expects_thinking: true
+
+  - id: tk_trivial_capital
+    input:
+      user_message: "What is the capital city of France? Answer in one word."
+    metadata:
+      kind: trivial
+      expects_thinking: false

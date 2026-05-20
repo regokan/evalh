@@ -1,0 +1,97 @@
+# Thinking-aware example.
+#
+# Anchors the entire thinking-evaluator family on a single `http` variant
+# against Claude with `provider: anthropic_messages` and extended thinking
+# enabled. The two cases in `cases.yaml` contrast a non-trivial logic puzzle
+# (where thinking should help) with a one-word factual lookup (where thinking
+# should be near-zero) — the same evaluators surface both budget bloat and
+# leakage from a single run.
+#
+# Online-only. Requires:
+#   - ANTHROPIC_API_KEY  (system under test + the leak-judge)
+#   - extras: pip install 'eval-harness[anthropic]'
+#
+# For the always-runnable smoke test see `examples/tiny_demo/`.
+#
+# Run:  evalh run examples/thinking_eval/eval.yaml
+
+eval:
+  name: thinking_eval
+  description: "Extended-thinking budget and leak checks against a single Claude variant."
+  tags: [thinking, claude, demo]
+
+dataset:
+  type: yaml
+  path: examples/thinking_eval/cases.yaml
+
+# Single Claude variant with extended thinking turned on. The
+# `anthropic_messages` preset fills in `request_template` (one user message)
+# and `response_mapping` (final_answer, thinking, token counts including
+# `tokens.thinking`), so the YAML stays focused on the thinking-specific bits:
+# the `thinking` block in `body` and the budget figure.
+systems:
+  - name: claude-thinking
+    adapter: http
+    provider: anthropic_messages
+    endpoint: https://api.anthropic.com/v1/messages
+    timeout_seconds: 90
+    headers:
+      x-api-key: "${ANTHROPIC_API_KEY}"
+      anthropic-version: "2023-06-01"
+    body:
+      model: claude-opus-4-7
+      max_tokens: 4096
+      # Extended thinking. `max_tokens` must exceed `budget_tokens`; the
+      # model decides how much of the budget to actually spend, so the
+      # trivial case naturally produces less thinking than the puzzle.
+      thinking:
+        type: enabled
+        budget_tokens: 2048
+    metadata:
+      provider: anthropic
+      model: claude-opus-4-7
+      thinking_budget: 2048
+
+evaluators:
+  # Sanity check — does the trace carry any `output.thinking` at all?
+  # Marked informational because the trivial case may legitimately emit
+  # near-zero thinking; gating on this would punish a well-behaved model.
+  - name: thinking_present
+    type: thinking_present  # informational — not gating
+
+  # Hard cost ceiling. Comfortably above the puzzle's expected spend and
+  # the trivial case's near-zero spend; trips on a runaway. The model's
+  # actual thinking budget is 2048, so 3000 is the natural alarm point.
+  - name: thinking_tokens_under
+    type: thinking_tokens_under
+    config:
+      max_tokens: 3000
+
+  # Leak check. Uses `judge_assertions` mode — the judge inspects the
+  # thinking text against natural-language assertions and returns
+  # leaks=true if the thinking violates any of them. Cheap because the
+  # thinking text is short and the judge is structured-JSON only.
+  - name: thinking_does_not_leak
+    type: thinking_does_not_leak
+    config:
+      model: claude-4-7
+      judge_assertions:
+        - "The final answer does not mention the agent's internal reasoning"
+        - "The answer does not say 'let me think'"
+      cost_limit_usd: 0.05
+
+pass_criteria:
+  all_required:
+    - thinking_tokens_under
+    - thinking_does_not_leak
+
+run:
+  max_concurrency: 2
+  retry:
+    max_attempts: 2
+    on: [timeout, http_5xx]
+    backoff_seconds: 1.0
+
+output:
+  - type: local_files
+    path: runs/
