@@ -197,7 +197,7 @@ async def test_python_function_adapter_propagates_structured() -> None:
     assert trace.output.final_answer == "extracted"
 
 
-async def test_python_function_adapter_non_dict_structured_raises() -> None:
+async def test_python_function_adapter_str_structured_raises() -> None:
     def bad(case: dict[str, Any], variant: dict[str, Any]) -> dict[str, Any]:
         return {"final_answer": "x", "structured": "not-a-dict"}
 
