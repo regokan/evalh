@@ -1,0 +1,23 @@
+# Canonical reference answers for the rag_qa example, keyed by case id.
+#
+# Human-readable source of truth. cases.yaml mirrors each entry into
+# `expected.facts.reference_answer` so the semantic_similarity evaluator can
+# read it via JSONPath. Edit the answer here and in cases.yaml together —
+# they are a pair on purpose.
+
+references:
+  pto_newhire: >-
+    New hires receive 15 PTO days per year, prorated from their start date.
+
+  remote_work: >-
+    Employees may work remotely up to three days per week and must be
+    available during core hours of 10:00 to 15:00 local time.
+
+  expense_conference: >-
+    Conference attendance requires manager approval at least two weeks
+    in advance and expenses are submitted via the standard expense
+    process within 30 days of purchase.
+
+  it_emergency: >-
+    For after-hours IT emergencies, contact the on-call engineer at
+    you@example.com.

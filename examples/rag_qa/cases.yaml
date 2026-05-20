@@ -1,0 +1,57 @@
+schema_version: "1.0"
+
+dataset:
+  name: rag_qa
+  description: "Four RAG-style questions over a synthetic company policy corpus."
+
+# Each case carries the question, the doc IDs that recall@k should retrieve
+# (alphabetically sorted, matched exactly by the tool_called evaluator), the
+# substring(s) a correct answer must mention, and a curated reference answer
+# the semantic_similarity evaluator scores against. The fixture corpus lives
+# in fixtures/docs.jsonl; the same reference answers also live in
+# fixtures/reference_answers.yaml in a flat per-id shape for human review.
+
+cases:
+  - id: pto_newhire
+    input:
+      question: "How many PTO days do new hires get?"
+    expected:
+      answer_should_include: ["15"]
+      facts:
+        retrieved_doc_ids: [pto-newhire, pto-tenure]
+        reference_answer: >-
+          New hires receive 15 PTO days per year, prorated from their start date.
+
+  - id: remote_work
+    input:
+      question: "What is the remote work policy and what hours do remote workers need to be available?"
+    expected:
+      answer_should_include: ["three days", "core hours"]
+      facts:
+        retrieved_doc_ids: [remote-hours, remote-policy]
+        reference_answer: >-
+          Employees may work remotely up to three days per week and must be
+          available during core hours of 10:00 to 15:00 local time.
+
+  - id: expense_conference
+    input:
+      question: "How is a conference expense approved and submitted?"
+    expected:
+      answer_should_include: ["manager approval"]
+      facts:
+        retrieved_doc_ids: [conference-policy, expense-policy]
+        reference_answer: >-
+          Conference attendance requires manager approval at least two weeks
+          in advance and expenses are submitted via the standard expense
+          process within 30 days of purchase.
+
+  - id: it_emergency
+    input:
+      question: "Who do I contact for an after-hours IT outage?"
+    expected:
+      answer_should_include: ["you@example.com"]
+      facts:
+        retrieved_doc_ids: [it-emergency, it-self-service]
+        reference_answer: >-
+          For after-hours IT emergencies, contact the on-call engineer at
+          you@example.com.

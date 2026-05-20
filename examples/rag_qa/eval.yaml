@@ -1,0 +1,84 @@
+# RAG-QA example.
+#
+# A retrieval-augmented QA pipeline over a small synthetic corpus of company
+# policy docs. Demonstrates the four-evaluator shape that real RAG evals
+# need: recall@k on retrieved doc IDs (tool_called), entity coverage on the
+# answer (contains_text), faithfulness/grounding (llm_judge), and semantic
+# closeness to a curated reference (semantic_similarity — first example of
+# this evaluator).
+#
+# Default mode runs OFFLINE: a deterministic stub generator composes the
+# answer from the retrieved documents. To swap in Claude as the generator,
+# set EVALH_RAG_USE_LLM=1 with ANTHROPIC_API_KEY exported.
+#
+# Required extras for an offline run:
+#   pip install 'eval-harness[anthropic,embeddings_local]'
+# `anthropic` is needed for the llm_judge backend to instantiate at plan
+# time (the call only succeeds when ANTHROPIC_API_KEY is set; without a
+# key llm_judge reports an evaluator error and the deterministic gates
+# in `pass_criteria` still decide the run outcome).
+# `embeddings_local` is needed for the sentence-transformers embedder
+# backing semantic_similarity; ~80 MB downloaded on first run.
+#
+# Run:  evalh run examples/rag_qa/eval.yaml
+
+eval:
+  name: rag_qa
+  description: "RAG over a synthetic policy corpus. Recall + answer + grounding + similarity."
+  tags: [rag, demo]
+
+dataset:
+  type: yaml
+  path: examples/rag_qa/cases.yaml
+
+systems:
+  - name: rag_agent
+    adapter: python_function
+    target: examples.rag_qa.agent:run
+
+evaluators:
+  - name: retrieves_required_docs
+    type: tool_called
+    config:
+      tool_name: retriever
+      args_match:
+        doc_ids: "{{case.expected.facts.retrieved_doc_ids}}"
+
+  - name: answer_mentions_required_entity
+    type: contains_text
+    # all_of defaults to case.expected.answer_should_include when omitted.
+
+  - name: answer_is_grounded
+    type: llm_judge
+    config:
+      model: claude-haiku-4-5-20251001
+      nl_assertions:
+        - "The answer only uses facts present in the retrieved documents."
+        - "The answer does not fabricate dates or numbers."
+      pass_when: all
+      cost_limit_usd: 0.05
+
+  - name: answer_close_to_reference
+    type: semantic_similarity
+    config:
+      embedder_name: sentence-transformers/all-MiniLM-L6-v2
+      reference_path: $.case.expected.facts.reference_answer
+      threshold: 0.75
+
+# Deterministic gates only. `answer_is_grounded` runs but isn't required —
+# without ANTHROPIC_API_KEY the judge call errors and the gate would falsely
+# fail the run. Keep it in evaluators so the trace records the judgement
+# (or the error) without gating offline success.
+pass_criteria:
+  all_required:
+    - retrieves_required_docs
+    - answer_mentions_required_entity
+    - answer_close_to_reference
+
+run:
+  max_concurrency: 4
+  baseline_variant: rag_agent
+
+output:
+  - type: local_files
+    path: runs/

@@ -1,0 +1,12 @@
+{"id": "pto-newhire", "title": "PTO accrual for new hires", "text": "New hires receive 15 PTO days per year, prorated from their start date. Days roll over up to a cap of 5 unused days into the following year."}
+{"id": "pto-tenure", "title": "PTO accrual after two years", "text": "After two years of continuous service, employees' PTO accrual increases to 20 days per year. The tenure bonus applies on the anniversary of the employee's start date."}
+{"id": "remote-policy", "title": "Remote work policy", "text": "The remote work policy permits permanent employees to work remotely up to three days per week with written manager agreement."}
+{"id": "remote-hours", "title": "Remote core hours", "text": "Remote workers must be available during core hours of 10:00 to 15:00 local time. Meetings outside core hours are optional."}
+{"id": "expense-policy", "title": "Expense approval policy", "text": "Expenses over 50 dollars require manager approval before reimbursement. Approved expense submissions are processed within ten business days."}
+{"id": "expense-form", "title": "Expense submission process", "text": "Submit the expense form on the internal portal within 30 days of the original purchase. Late submissions are reviewed case by case."}
+{"id": "conference-policy", "title": "Conference attendance policy", "text": "Conference attendance requires manager approval at least two weeks in advance. Approved conference expenses follow the standard expense submission process."}
+{"id": "it-emergency", "title": "After-hours IT contact", "text": "For after-hours IT emergencies, contact the on-call engineer at you@example.com. The on-call rotation publishes its weekly schedule on the IT wiki."}
+{"id": "it-self-service", "title": "Routine IT requests", "text": "Routine IT password resets and software installs use the self-service portal during normal business hours."}
+{"id": "onboarding", "title": "New hire orientation", "text": "All new employees complete orientation during their first week. Orientation covers benefits enrollment, security training, and team introductions."}
+{"id": "handbook-intro", "title": "Handbook scope", "text": "This handbook applies to all permanent staff. Contractors and interns follow a separate addendum maintained by People Operations."}
+{"id": "handbook-perks", "title": "Perks and stipends", "text": "Perks include a monthly wellness stipend and an annual learning stipend that may be applied to books or courses."}
