@@ -1,0 +1,90 @@
+schema_version: "1.0"
+
+dataset:
+  name: structured_extraction
+  description: "Four synthetic invoices the agent must parse into the canonical JSON envelope."
+
+# Each case carries one unstructured invoice string. `expected.facts` carries
+# both the JSONPath anchors the deterministic evaluators check
+# (`invoice_total` for exact_match) and a curated free-text summary the
+# semantic_similarity evaluator scores the agent's `final_answer` against.
+
+cases:
+  - id: acme_widgets
+    input:
+      invoice_text: |
+        Acme Widgets Co.
+        Invoice INV-1001
+        Date: 2026-04-12
+        Currency: USD
+
+        Stainless bolts, M6 x 20mm    120.00
+        Hex nuts, zinc, M6             45.50
+        Shipping & handling            34.50
+
+        Total: 200.00
+    expected:
+      facts:
+        invoice_total: 200.00
+        reference_summary: >-
+          Acme Widgets invoice INV-1001 dated 2026-04-12 for 200 USD covers
+          stainless bolts, hex nuts, and shipping & handling.
+
+  - id: northwind_supplies
+    input:
+      invoice_text: |
+        Northwind Supplies Ltd
+        Invoice INV-2204
+        Date: 2026-04-18
+        Currency: GBP
+
+        Office chair, ergonomic       320.00
+        Standing desk, oak veneer     480.00
+
+        Total: 800.00
+    expected:
+      facts:
+        invoice_total: 800.00
+        reference_summary: >-
+          Northwind Supplies invoice INV-2204 dated 2026-04-18 for 800 GBP
+          covers an ergonomic office chair and an oak-veneer standing desk.
+
+  - id: helios_cloud
+    input:
+      invoice_text: |
+        Helios Cloud GmbH
+        Invoice INV-7782
+        Date: 2026-05-01
+        Currency: EUR
+
+        Compute, 240 vCPU-hours       180.00
+        Object storage, 2 TB-month     40.00
+        Egress bandwidth, 150 GB        9.50
+
+        Total: 229.50
+    expected:
+      facts:
+        invoice_total: 229.50
+        reference_summary: >-
+          Helios Cloud invoice INV-7782 dated 2026-05-01 for 229.50 EUR
+          covers compute, object storage, and egress bandwidth.
+
+  - id: lumen_design
+    input:
+      invoice_text: |
+        Lumen Design Studio
+        Invoice INV-0042
+        Date: 2026-05-09
+        Currency: USD
+
+        Brand identity sprint        2500.00
+        Logo refinement pass          400.00
+        Style guide, PDF              100.00
+
+        Total: 3000.00
+    expected:
+      facts:
+        invoice_total: 3000.00
+        reference_summary: >-
+          Lumen Design invoice INV-0042 dated 2026-05-09 for 3000 USD covers
+          a brand identity sprint, logo refinement, and a PDF style guide.

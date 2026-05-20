@@ -155,6 +155,32 @@ async def test_python_function_adapter_init_kwargs_instantiates_factory() -> Non
     assert trace.output.final_answer == "called with claude-haiku"
 
 
+async def test_python_function_adapter_propagates_structured() -> None:
+    async def my_agent(case: dict[str, Any], variant: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "final_answer": "extracted",
+            "structured": {"invoice_total": 1234.5, "currency": "USD"},
+        }
+
+    _install_module("fake_pf_mod_structured", run=my_agent)
+    adapter = PythonFunctionAdapter(name="x", target="fake_pf_mod_structured:run")
+    async with adapter:
+        trace = await adapter.run(_case(), _variant(), None)
+    assert trace.output.structured == {"invoice_total": 1234.5, "currency": "USD"}
+    assert trace.output.final_answer == "extracted"
+
+
+async def test_python_function_adapter_non_dict_structured_raises() -> None:
+    def bad(case: dict[str, Any], variant: dict[str, Any]) -> dict[str, Any]:
+        return {"final_answer": "x", "structured": "not-a-dict"}
+
+    _install_module("fake_pf_mod_structured_bad", run=bad)
+    adapter = PythonFunctionAdapter(name="x", target="fake_pf_mod_structured_bad:run")
+    async with adapter:
+        with pytest.raises(AdapterError, match="structured"):
+            await adapter.run(_case(), _variant(), None)
+
+
 async def test_python_function_adapter_run_outside_context_raises() -> None:
     def my_agent(case: dict[str, Any], variant: dict[str, Any]) -> dict[str, Any]:
         return {"final_answer": "x"}

@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "examples/structured_extraction/invoice.schema.json",
+  "title": "Invoice extraction",
+  "description": "Canonical JSON envelope an invoice-extraction agent must emit. Mirrored into eval.yaml > evaluators.envelope_matches_schema.config.schema because the schema_match evaluator takes a dict, not a path.",
+  "type": "object",
+  "required": ["invoice_id", "vendor", "invoice_total", "currency", "line_items"],
+  "additionalProperties": false,
+  "properties": {
+    "invoice_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "vendor": {
+      "type": "string",
+      "minLength": 1
+    },
+    "invoice_total": {
+      "type": "number",
+      "minimum": 0
+    },
+    "currency": {
+      "type": "string",
+      "enum": ["USD", "EUR", "GBP"]
+    },
+    "issue_date": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+    },
+    "line_items": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["description", "amount"],
+        "additionalProperties": false,
+        "properties": {
+          "description": {"type": "string", "minLength": 1},
+          "amount": {"type": "number", "minimum": 0}
+        }
+      }
+    }
+  }
+}

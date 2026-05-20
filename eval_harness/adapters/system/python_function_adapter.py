@@ -146,10 +146,16 @@ def _compose_trace(
 ) -> Trace:
     final_answer = result.get("final_answer")
     thinking = result.get("thinking")
+    structured = result.get("structured")
     if final_answer is not None and not isinstance(final_answer, str):
         final_answer = str(final_answer)
     if thinking is not None and not isinstance(thinking, str):
         thinking = str(thinking)
+    if structured is not None and not isinstance(structured, dict):
+        raise AdapterError(
+            f"python_function adapter: 'structured' must be a dict, "
+            f"got {type(structured).__name__}"
+        )
 
     tool_calls = [_build_tool_call(t) for t in result.get("tool_calls", []) or []]
     tool_results = [_build_tool_result(t) for t in result.get("tool_results", []) or []]
@@ -171,7 +177,11 @@ def _compose_trace(
         finished_at=finished_at,
         latency_ms=latency_ms,
         input=dict(case.input),
-        output=TraceOutput(final_answer=final_answer, thinking=thinking),
+        output=TraceOutput(
+            final_answer=final_answer,
+            thinking=thinking,
+            structured=structured,
+        ),
         messages=messages,
         tool_calls=tool_calls,
         tool_results=tool_results,

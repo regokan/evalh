@@ -1,0 +1,118 @@
+# Structured-extraction example.
+#
+# An invoice-extraction agent that emits a JSON envelope. The three
+# evaluators that grade the run are the canonical shape for "did the agent
+# produce structured output, in the right shape, with the right values?":
+#
+#   schema_match           — shape gate: every field in the envelope
+#                            conforms to schemas/invoice.schema.json.
+#   exact_match            — value gate: invoice_total matches the
+#                            per-case ground truth (first use of
+#                            exact_match in the repo).
+#   semantic_similarity    — soft gate: the agent's free-text summary is
+#                            close to the curated reference summary.
+#
+# Default mode runs OFFLINE: a deterministic regex extractor parses the
+# invoice text. To swap in Claude as the extractor, set
+# EVALH_EXTRACTION_USE_LLM=1 with ANTHROPIC_API_KEY exported.
+#
+# Required extras:
+#   pip install 'eval-harness[embeddings_local]'
+# `embeddings_local` pulls sentence-transformers for the embedder backing
+# semantic_similarity (~80 MB on first run). Anthropic is only needed if
+# you opt in to the LLM extractor via EVALH_EXTRACTION_USE_LLM=1; the
+# agent raises ConfigError at plan time with the install hint if the
+# extra is missing.
+#
+# Run:  evalh run examples/structured_extraction/eval.yaml
+
+eval:
+  name: structured_extraction
+  description: "JSON-mode invoice extraction. Schema + exact-field + summary similarity."
+  tags: [extraction, json, demo]
+
+dataset:
+  type: yaml
+  path: examples/structured_extraction/cases.yaml
+
+systems:
+  - name: extraction_agent
+    adapter: python_function
+    target: examples.structured_extraction.agent:run
+
+evaluators:
+  # Schema gate. The schema is duplicated from
+  # schemas/invoice.schema.json because the schema_match evaluator takes
+  # a dict, not a path — single-source-of-truth would require adding
+  # schema_path support to the evaluator (deferred). Keep both copies in
+  # sync; the .json file is the human-readable canonical artefact.
+  - name: envelope_matches_schema
+    type: schema_match
+    config:
+      field: $.output.structured
+      schema:
+        $schema: "https://json-schema.org/draft/2020-12/schema"
+        $id: "examples/structured_extraction/invoice.schema.json"
+        title: "Invoice extraction"
+        type: object
+        required: [invoice_id, vendor, invoice_total, currency, line_items]
+        additionalProperties: false
+        properties:
+          invoice_id:
+            type: string
+            minLength: 1
+          vendor:
+            type: string
+            minLength: 1
+          invoice_total:
+            type: number
+            minimum: 0
+          currency:
+            type: string
+            enum: [USD, EUR, GBP]
+          issue_date:
+            type: string
+            pattern: "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+          line_items:
+            type: array
+            minItems: 1
+            items:
+              type: object
+              required: [description, amount]
+              additionalProperties: false
+              properties:
+                description:
+                  type: string
+                  minLength: 1
+                amount:
+                  type: number
+                  minimum: 0
+
+  # First exact_match in the repo. The trace path resolves the extracted
+  # total; expected_from looks up the ground truth on case.expected.facts.
+  - name: invoice_total_exact
+    type: exact_match
+    config:
+      field: $.output.structured.invoice_total
+      expected_from: $.invoice_total
+
+  - name: summary_close_to_reference
+    type: semantic_similarity
+    config:
+      embedder_name: sentence-transformers/all-MiniLM-L6-v2
+      reference_path: $.case.expected.facts.reference_summary
+      threshold: 0.70
+
+pass_criteria:
+  all_required:
+    - envelope_matches_schema
+    - invoice_total_exact
+    - summary_close_to_reference
+
+run:
+  max_concurrency: 4
+  baseline_variant: extraction_agent
+
+output:
+  - type: local_files
+    path: runs/
