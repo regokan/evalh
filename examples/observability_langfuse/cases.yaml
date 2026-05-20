@@ -1,0 +1,35 @@
+schema_version: "1.0"
+
+dataset:
+  name: observability_langfuse
+  description: "Synthetic mortgage-support cases for the offline triplet demo."
+
+cases:
+  - id: rate_lock_question
+    input:
+      user_message: |-
+        Can I lock my mortgage rate today and close next month, or is it
+        too early in the process?
+    metadata:
+      topic: rate_lock
+    expected:
+      answer_should_include: [rate]
+
+  - id: appraisal_low
+    input:
+      user_message: |-
+        The appraisal on my new house came in $15,000 under contract price.
+        What are my options?
+    metadata:
+      topic: appraisal
+    expected:
+      answer_should_include: [appraisal]
+
+  - id: pmi_drop
+    input:
+      user_message: |-
+        My loan is two years old. When can I drop PMI?
+    metadata:
+      topic: pmi
+    expected:
+      answer_should_include: [PMI]

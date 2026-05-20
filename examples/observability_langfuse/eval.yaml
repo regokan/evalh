@@ -1,0 +1,102 @@
+# Observability-Langfuse example.
+#
+# Demonstrates the Langfuse triplet — DatasetAdapter + TraceStore +
+# TraceEnricher — in one example. Runs OFFLINE by default against a
+# fixture dataset; comment-swaps in the README activate any of the three
+# Langfuse pathways when you have `[langfuse]` installed and env vars set.
+#
+# The point: platforms (Langfuse, Phoenix, Arize, OTel) are sources,
+# sinks, and enrichers — never the source of truth. The local
+# `runs/<run_id>/traces.jsonl` stays canonical; remote sinks mirror it.
+#
+# Run (offline):  evalh run examples/observability_langfuse/eval.yaml
+
+eval:
+  name: observability_langfuse
+  description: "Langfuse triplet — dataset / store / enricher — on offline fixtures."
+  tags: [observability, langfuse, demo]
+
+metadata:
+  source: fixture
+
+# ── Dataset ──────────────────────────────────────────────────────────
+# Offline default: fixture adapter reads the YAML case file. Cheap,
+# deterministic, no network.
+dataset:
+  type: fixture
+  path: examples/observability_langfuse/cases.yaml
+
+# Online swap — uncomment + set LANGFUSE_HOST / LANGFUSE_API_KEY to pull
+# production traces from Langfuse as your eval cases. The same eval.yaml
+# shape works; only this block changes.
+#
+# dataset:
+#   type: langfuse
+#   api_key: ${LANGFUSE_API_KEY}
+#   host: ${LANGFUSE_HOST}
+#   filter:
+#     tags: [production]
+#     timestamp_gt: "2026-04-26T00:00:00Z"
+#   sample: 50
+#   embed_full_trace: true   # pair with `adapter: replay` to grade prod traffic offline
+
+# ── Systems ──────────────────────────────────────────────────────────
+systems:
+  - name: support_bot
+    adapter: python_function
+    target: examples.observability_langfuse.agent:run
+    metadata:
+      kind: deterministic_stub
+    # ── Enricher ────────────────────────────────────────────────────
+    # Uncomment to fold the upstream Langfuse trace's fields onto the
+    # local trace (via `trace.extra.trace_id` → upstream trace). Requires
+    # `[langfuse]` extra installed AND LANGFUSE_* env vars set. Without
+    # them this block raises ConfigError at plan time — see README §
+    # "Deviation from plan.md".
+    #
+    # enrich_trace_from:
+    #   - type: langfuse
+    #     api_key: ${LANGFUSE_API_KEY}
+    #     host: ${LANGFUSE_HOST}
+    #     wait_for_ingestion_seconds: 2.0
+    #     merge:
+    #       "metrics.token_input":  "$.usage.input_tokens"
+    #       "metrics.token_output": "$.usage.output_tokens"
+    #       "extra.upstream_score": "$.score"
+
+# ── Evaluators ───────────────────────────────────────────────────────
+evaluators:
+  - name: answer_mentions_topic
+    type: contains_text
+    config:
+      any_of: [rate, appraisal, PMI]
+      case_sensitive: false
+
+  # informational — not gating. Surfaces cases the agent ran very slow on
+  # even though the answer was on-topic.
+  - name: under_two_seconds
+    type: latency_under
+    config:
+      max_ms: 2000
+
+pass_criteria:
+  all_required:
+    - answer_mentions_topic
+
+run:
+  max_concurrency: 4
+  baseline_variant: support_bot
+
+# ── Trace stores ─────────────────────────────────────────────────────
+# Canonical sink: the local `runs/<run_id>/` directory. Always on.
+output:
+  - type: local_files
+    path: runs/
+
+  # Mirror to Langfuse UI — uncomment + set env vars to enable. Requires
+  # `[langfuse]` extra installed; without it this block raises
+  # ConfigError at plan time (see README § "Deviation from plan.md").
+  #
+  # - type: langfuse
+  #   api_key: ${LANGFUSE_API_KEY}
+  #   host: ${LANGFUSE_HOST}
