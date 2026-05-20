@@ -1,0 +1,76 @@
+# Distributed-Ray example.
+#
+# Clone of `examples/regression_gate/eval.yaml` with one delta: the
+# `run.executor` block routes every cell through the Ray executor instead
+# of the default in-process LocalExecutor. The dataset, agent, evaluators,
+# and pass criteria are reused as-is so the diff against regression_gate
+# stays a single block — `evalh diff examples/regression_gate/eval.yaml
+# examples/distributed_ray/eval.yaml` reads it at a glance.
+#
+# Requires `ray[default]` installed locally OR a reachable Ray cluster.
+# Excluded from CI smoke (the smoke workflow only runs `tiny_demo`); the
+# Ray executor tests carry `@pytest.mark.ray` and are excluded from the
+# default pytest invocation as well.
+#
+# Run:  evalh run examples/distributed_ray/eval.yaml
+
+eval:
+  name: distributed_ray
+  description: "Regression-gate cloned onto the Ray executor — config travels, code doesn't."
+  tags: [ray, distributed, demo]
+
+# Link, don't duplicate — same cases as regression_gate (which itself
+# links to tiny_demo).
+dataset:
+  type: yaml
+  path: examples/tiny_demo/cases.yaml
+
+systems:
+  - name: agent_stub
+    adapter: python_function
+    target: examples.regression_gate.agent:run
+
+evaluators:
+  - name: must_call_listing_tool
+    type: tool_called
+    config:
+      tool_name: get_listing_details
+
+  - name: must_call_suburb_price_tool
+    type: tool_called
+    config:
+      tool_name: get_average_suburb_price
+
+  - name: answer_mentions_suburb
+    type: contains_text
+    config:
+      any_of: [Richmond, Brunswick, Carlton]
+      case_sensitive: false
+
+pass_criteria:
+  all_required:
+    - must_call_listing_tool
+    - must_call_suburb_price_tool
+    - answer_mentions_suburb
+
+# The only meaningful delta from regression_gate. Setting
+# `run.executor.type: ray` makes each (case, variant) cell a
+# `ray.remote` task; the worker rebuilds adapters from
+# `eval_config_dict` via the entry-point layer — **config travels,
+# code doesn't**. The `llm: 8` pool sizes how many cells the executor
+# will keep in-flight when a variant tags itself with `pool: llm`;
+# the stub variant here doesn't claim the pool, so it falls back to
+# the per-variant semaphore, but the declaration is exercised so
+# downstream copies of this example can wire a real LLM variant
+# to it with `systems[0].pool: llm` and nothing else.
+run:
+  max_concurrency: 4
+  baseline_variant: agent_stub
+  executor:
+    type: ray
+    pools:
+      llm: 8
+
+output:
+  - type: local_files
+    path: runs/
