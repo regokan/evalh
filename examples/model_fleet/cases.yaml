@@ -1,0 +1,142 @@
+# Twenty Melbourne real-estate QA cases.
+#
+# Tied to the listing_price domain ("same agent, three brains") so the suite
+# feels coherent across examples — Richmond / Brunswick / Carlton plus a few
+# neighbouring inner-north suburbs. Cases are general-knowledge questions an
+# LLM with no tool access can reasonably answer; the llm_judge evaluator
+# scores the answer, not specific facts.
+#
+# No real customer data, no real listing IDs.
+
+schema_version: "1.0"
+
+dataset:
+  name: model_fleet_v1
+  description: "Melbourne residential real-estate QA — twenty domain questions."
+
+cases:
+  - id: mf_richmond_vibe
+    input:
+      user_message: "Briefly describe what kind of buyer Richmond, Melbourne tends to attract."
+    metadata:
+      suburb: Richmond
+      kind: descriptive
+
+  - id: mf_brunswick_vibe
+    input:
+      user_message: "How would you describe Brunswick, Melbourne to someone moving from interstate?"
+    metadata:
+      suburb: Brunswick
+      kind: descriptive
+
+  - id: mf_carlton_vibe
+    input:
+      user_message: "What is Carlton, Melbourne best known for as a place to live?"
+    metadata:
+      suburb: Carlton
+      kind: descriptive
+
+  - id: mf_richmond_vs_brunswick
+    input:
+      user_message: "How does the residential property feel in Richmond compare with Brunswick?"
+    metadata:
+      kind: comparison
+
+  - id: mf_carlton_vs_brunswick
+    input:
+      user_message: "If a buyer likes Carlton but finds it pricey, which neighbouring suburb has a similar character?"
+    metadata:
+      kind: comparison
+
+  - id: mf_apartment_vs_townhouse
+    input:
+      user_message: "In inner-north Melbourne, what should a first-home buyer weigh up when choosing between an apartment and a townhouse?"
+    metadata:
+      kind: advice
+
+  - id: mf_period_homes
+    input:
+      user_message: "Why are Victorian-era terrace homes common in inner Melbourne suburbs like Carlton and Fitzroy?"
+    metadata:
+      kind: knowledge
+
+  - id: mf_north_richmond
+    input:
+      user_message: "What sets North Richmond apart from the rest of Richmond for a residential buyer?"
+    metadata:
+      suburb: Richmond
+      kind: descriptive
+
+  - id: mf_train_lines
+    input:
+      user_message: "Which train lines mostly serve Richmond, Brunswick, and Carlton, and why does that matter to buyers?"
+    metadata:
+      kind: knowledge
+
+  - id: mf_inspection_etiquette
+    input:
+      user_message: "What is the etiquette for attending an open-for-inspection at a Melbourne listing?"
+    metadata:
+      kind: advice
+
+  - id: mf_auction_basics
+    input:
+      user_message: "Explain how a residential auction typically runs in Melbourne for a buyer who has never attended one."
+    metadata:
+      kind: advice
+
+  - id: mf_stamp_duty
+    input:
+      user_message: "At a high level, what is stamp duty and why does it matter when buying property in Victoria?"
+    metadata:
+      kind: knowledge
+
+  - id: mf_school_zones
+    input:
+      user_message: "How do school zones tend to influence demand for family homes in Melbourne's inner suburbs?"
+    metadata:
+      kind: knowledge
+
+  - id: mf_investment_yield
+    input:
+      user_message: "What does 'rental yield' mean for an investor looking at apartments in Brunswick?"
+    metadata:
+      kind: knowledge
+
+  - id: mf_off_market
+    input:
+      user_message: "What is an off-market sale, and when might a Melbourne buyer come across one?"
+    metadata:
+      kind: knowledge
+
+  - id: mf_building_inspection
+    input:
+      user_message: "Why do most Melbourne buyers commission a building and pest inspection before bidding?"
+    metadata:
+      kind: advice
+
+  - id: mf_owners_corporation
+    input:
+      user_message: "What does an owners corporation do for the residents of a Melbourne apartment building?"
+    metadata:
+      kind: knowledge
+
+  - id: mf_carlton_north_quiet
+    input:
+      user_message: "If a buyer wants Carlton's character but a quieter street, which pockets are worth a look?"
+    metadata:
+      suburb: Carlton
+      kind: advice
+
+  - id: mf_first_home_grant
+    input:
+      user_message: "At a high level, what kinds of first-home-buyer incentives exist in Victoria?"
+    metadata:
+      kind: knowledge
+
+  - id: mf_brunswick_warehouse
+    input:
+      user_message: "Brunswick has converted warehouse apartments. What should a buyer consider that they wouldn't for a standard apartment?"
+    metadata:
+      suburb: Brunswick
+      kind: advice

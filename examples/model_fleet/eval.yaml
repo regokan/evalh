@@ -1,0 +1,126 @@
+# Model-fleet example.
+#
+# Three-variant fleet comparison: the same Melbourne-real-estate QA prompt
+# shipped against three different LLM backends — Anthropic Haiku, Anthropic
+# Sonnet (claude-4-7), and OpenAI GPT-5.5. The runner expands cases × 3 and
+# dispatches concurrently; the per-variant summary in `runs/<id>/summary.yaml`
+# answers "which model wins on my domain?"
+#
+# First example of:
+#   - a three-way fleet (every previous example tops out at two variants).
+#   - the run-level cost guardrail `run.cost_limit_usd` — once accumulated
+#     cost across completed cells crosses $0.50, queued cells short-circuit
+#     with a `cost_limit` Trace.
+#   - `baseline_variant: anthropic-haiku`, so the ComparisonReport renders
+#     `vs baseline` columns for the other two models.
+#
+# Online-only. Needs BOTH:
+#   - ANTHROPIC_API_KEY  (anthropic-haiku, anthropic-sonnet)
+#   - OPENAI_API_KEY     (openai-gpt-5-5)
+#
+# For the always-runnable smoke test see `examples/tiny_demo/`.
+#
+# Run:  evalh run examples/model_fleet/eval.yaml
+
+eval:
+  name: model_fleet
+  description: "Three-model fleet across Melbourne real-estate QA — quality, cost, latency."
+  tags: [fleet, comparison, demo]
+
+dataset:
+  type: yaml
+  path: examples/model_fleet/cases.yaml
+
+# One adapter shape, three variants — the runner does the rest.
+# Each variant uses a `provider:` preset so the request shape and
+# response_mapping are filled in by the http adapter itself.
+systems:
+  - name: anthropic-haiku
+    adapter: http
+    provider: anthropic_messages
+    endpoint: https://api.anthropic.com/v1/messages
+    timeout_seconds: 60
+    headers:
+      x-api-key: "${ANTHROPIC_API_KEY}"
+      anthropic-version: "2023-06-01"
+    body:
+      model: claude-haiku-4-5
+      max_tokens: 512
+    metadata:
+      provider: anthropic
+      model: claude-haiku-4-5
+
+  - name: anthropic-sonnet
+    adapter: http
+    provider: anthropic_messages
+    endpoint: https://api.anthropic.com/v1/messages
+    timeout_seconds: 60
+    headers:
+      x-api-key: "${ANTHROPIC_API_KEY}"
+      anthropic-version: "2023-06-01"
+    body:
+      model: claude-4-7
+      max_tokens: 512
+    metadata:
+      provider: anthropic
+      model: claude-4-7
+
+  - name: openai-gpt-5-5
+    adapter: http
+    provider: openai_chat
+    endpoint: https://api.openai.com/v1/chat/completions
+    timeout_seconds: 60
+    headers:
+      Authorization: "Bearer ${OPENAI_API_KEY}"
+    body:
+      model: gpt-5.5
+      max_tokens: 512
+    metadata:
+      provider: openai
+      model: gpt-5.5
+
+evaluators:
+  # Quality — same prompt, same assertions, judged by claude-4-7 across all
+  # three variants so the bar is identical.
+  - name: answer_quality
+    type: llm_judge
+    config:
+      model: claude-4-7
+      nl_assertions:
+        - "The answer directly addresses the user's question about Melbourne real estate."
+        - "The answer is concise — under four sentences."
+        - "The answer does not invent specific dollar prices or statistics it cannot justify."
+      pass_when: all
+      cost_limit_usd: 0.05
+
+  # Per-case cost ceiling. Generous enough that small models pass easily but
+  # surfaces a runaway sonnet/gpt response.
+  - name: cost_per_case_under
+    type: cost_under
+    config:
+      max_usd: 0.02
+
+  # Wall-clock budget per case — surfaces a slow provider even when the
+  # answer is good.
+  - name: latency_per_case_under
+    type: latency_under
+    config:
+      max_ms: 30000
+
+pass_criteria:
+  all_required:
+    - answer_quality
+    - latency_per_case_under
+
+run:
+  max_concurrency: 4
+  baseline_variant: anthropic-haiku
+  cost_limit_usd: 0.50
+  retry:
+    max_attempts: 2
+    on: [timeout, http_5xx]
+    backoff_seconds: 1.0
+
+output:
+  - type: local_files
+    path: runs/
