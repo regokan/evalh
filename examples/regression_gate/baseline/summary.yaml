@@ -1,0 +1,41 @@
+schema_version: '1.0'
+run_id: 2026-05-20T04-14-18_regression_gate
+started_at: '2026-05-20T04:14:18.824222Z'
+finished_at: '2026-05-20T04:14:18.824222Z'
+config_path: runs/2026-05-20T04-14-18_regression_gate
+config_hash: ''
+cases_total: 3
+variants:
+- name: agent_stub
+  cases_total: 3
+  cases_passed: 3
+  cases_errored: 0
+  pass_rate: 1.0
+  avg_latency_ms: 0.0
+  avg_cost_usd: null
+  avg_tokens_input: 0.0
+  avg_tokens_output: 0.0
+by_evaluator:
+- evaluator: answer_mentions_suburb
+  by_variant:
+    agent_stub:
+      pass_rate: 1.0
+      avg_score: null
+- evaluator: must_call_listing_tool
+  by_variant:
+    agent_stub:
+      pass_rate: 1.0
+      avg_score: null
+- evaluator: must_call_suburb_price_tool
+  by_variant:
+    agent_stub:
+      pass_rate: 1.0
+      avg_score: null
+comparison:
+  baseline: agent_stub
+  deltas: []
+  kind: ad_hoc
+  baseline_run_id: null
+  regressions_count: null
+  improvements_count: null
+sink_errors: []

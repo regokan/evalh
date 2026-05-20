@@ -1,0 +1,59 @@
+# Regression-gate example.
+#
+# Demonstrates the drift workflow end-to-end:
+#   evalh run -> evalh promote -> evalh drift
+#
+# Runs offline — no API key, no network. Uses a tiny deterministic agent
+# (examples/regression_gate/agent.py) and the canonical tiny_demo cases.
+# The example is about the run lifecycle and the CI gate, not the agent.
+#
+# Run:  evalh run examples/regression_gate/eval.yaml
+
+eval:
+  name: regression_gate
+  description: "Drift-detection walkthrough — run, promote, drift, gate."
+  tags: [drift, ci, regression-gate]
+
+# Link, don't duplicate — cases come straight from tiny_demo.
+dataset:
+  type: yaml
+  path: examples/tiny_demo/cases.yaml
+
+systems:
+  - name: agent_stub
+    adapter: python_function
+    target: examples.regression_gate.agent:run
+
+# Deterministic evaluators only — no llm_judge so this runs without an
+# ANTHROPIC_API_KEY. The drift report doesn't care which evaluators fire,
+# only that the same set fires on baseline and current.
+evaluators:
+  - name: must_call_listing_tool
+    type: tool_called
+    config:
+      tool_name: get_listing_details
+
+  - name: must_call_suburb_price_tool
+    type: tool_called
+    config:
+      tool_name: get_average_suburb_price
+
+  - name: answer_mentions_suburb
+    type: contains_text
+    config:
+      any_of: [Richmond, Brunswick, Carlton]
+      case_sensitive: false
+
+pass_criteria:
+  all_required:
+    - must_call_listing_tool
+    - must_call_suburb_price_tool
+    - answer_mentions_suburb
+
+run:
+  max_concurrency: 4
+  baseline_variant: agent_stub
+
+output:
+  - type: local_files
+    path: runs/

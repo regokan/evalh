@@ -1,0 +1,65 @@
+schema_version: '1.0'
+eval:
+  name: regression_gate
+  description: "Drift-detection walkthrough \u2014 run, promote, drift, gate."
+  owner: null
+  tags:
+  - drift
+  - ci
+  - regression-gate
+metadata: {}
+dataset:
+  type: yaml
+  path: examples/tiny_demo/cases.yaml
+  filter: {}
+  sample: null
+systems:
+- name: agent_stub
+  adapter: python_function
+  metadata: {}
+  timeout_seconds: 120
+  enrich_trace_from: []
+  pool: null
+  target: examples.regression_gate.agent:run
+workspace: null
+trace: null
+evaluators:
+- name: must_call_listing_tool
+  type: tool_called
+  config:
+    tool_name: get_listing_details
+- name: must_call_suburb_price_tool
+  type: tool_called
+  config:
+    tool_name: get_average_suburb_price
+- name: answer_mentions_suburb
+  type: contains_text
+  config:
+    any_of:
+    - Richmond
+    - Brunswick
+    - Carlton
+    case_sensitive: false
+pass_criteria:
+  all_required:
+  - must_call_listing_tool
+  - must_call_suburb_price_tool
+  - answer_mentions_suburb
+  any_required: []
+run:
+  max_concurrency: 4
+  per_variant_concurrency: null
+  retry:
+    max_attempts: 1
+    'on': []
+    backoff_seconds: 0.0
+  baseline_variant: agent_stub
+  cost_limit_usd: null
+  executor:
+    type: local
+    pools: {}
+metrics:
+  price_table_path: null
+output:
+- type: local_files
+  path: runs/
