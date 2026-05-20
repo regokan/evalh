@@ -144,12 +144,14 @@ See [`docs/ConfigSchema.md`](docs/ConfigSchema.md) for every field.
 
 ## Examples
 
-Four runnable references live under [`examples/`](examples/):
+Fifteen runnable references live under [`examples/`](examples/) — see [`examples/README.md`](examples/README.md) for the full index grouped by use-case (RAG, streaming, fleet comparison, drift detection, online evaluation, distributed execution, and more).
 
-- **[`tiny_demo/`](examples/tiny_demo/)** — self-contained smoke test against Claude. Needs only `ANTHROPIC_API_KEY`. Finishes in under a minute.
-- **[`listing_price/`](examples/listing_price/)** — realistic-shape eval: HTTP agent service, two variants, LLM judge. Plug your service in.
-- **[`online_eval/`](examples/online_eval/)** — replay-style evaluation. The fixture adapter ships embedded historical traces; the `replay` SystemAdapter scores them. Swap the fixture for Langfuse / Phoenix / Arize to score production traffic.
-- **[`coding_agent/`](examples/coding_agent/)** — workspace-mutating agent. Claude patches a fixture repo; the `command` evaluator runs pytest in the artifact directory.
+A few good starting points:
+
+- **[`tiny_demo/`](examples/tiny_demo/)** — install smoke test. Real Claude call, finishes in under a minute. Needs only `ANTHROPIC_API_KEY`.
+- **[`rag_qa/`](examples/rag_qa/)** — retrieval-augmented QA with recall, faithfulness, and `semantic_similarity` evaluators.
+- **[`model_fleet/`](examples/model_fleet/)** — three-model fleet comparison (Claude Haiku, Claude Sonnet, GPT) with a `cost_limit_usd` guardrail.
+- **[`regression_gate/`](examples/regression_gate/)** — drift-detection workflow (`evalh run` → `promote` → `drift`) as a CI gate. Runs offline.
 
 ---
 
