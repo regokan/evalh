@@ -1,0 +1,3 @@
+{"id": "lf_abc123", "input": {"user_message": "What is the average house price near listing ABC123?"}, "metadata": {"listing_id": "ABC123", "suburb": "Richmond"}, "tags": ["production"], "timestamp": "2026-05-01T10:00:00+00:00"}
+{"id": "lf_xyz789", "input": {"user_message": "Is listing XYZ789 expensive for its suburb?"}, "metadata": {"listing_id": "XYZ789", "suburb": "Brunswick"}, "tags": ["production"], "timestamp": "2026-05-01T10:01:14+00:00"}
+{"id": "lf_def456", "input": {"user_message": "Compare listing DEF456 to its suburb average."}, "metadata": {"listing_id": "DEF456", "suburb": "Carlton"}, "tags": ["production"], "timestamp": "2026-05-01T10:02:01+00:00"}

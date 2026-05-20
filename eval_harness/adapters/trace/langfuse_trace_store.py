@@ -21,14 +21,14 @@ from eval_harness._platforms.langfuse import (
     release_langfuse_client,
 )
 from eval_harness.core.errors import AdapterError
-
-_log = logging.getLogger(__name__)
 from eval_harness.core.models import (
     EvaluationResult,
     FilesystemArtifact,
     RunSummary,
     Trace,
 )
+
+_log = logging.getLogger(__name__)
 
 
 class LangfuseTraceStore:
