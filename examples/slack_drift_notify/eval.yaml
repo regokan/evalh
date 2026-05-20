@@ -1,0 +1,86 @@
+# Slack-drift-notify example.
+#
+# A tiny add-on to examples/regression_gate. Same agent, same cases,
+# same evaluators — the ONLY thing this example demonstrates is the
+# `output:` list-of-sinks contract: a `local_files` canonical store
+# plus a Slack webhook secondary sink.
+#
+# When SLACK_WEBHOOK_URL is unset, the env-var default expands to ""
+# and the webhook store short-circuits — the run still succeeds, with
+# the canonical local_files sink unaffected and a single warning logged
+# by the webhook store. This is what makes the example offline-runnable:
+# the webhook entry can sit in output: permanently and only fire when
+# the secret is actually present.
+#
+# When SLACK_WEBHOOK_URL is set, the webhook store posts the run
+# summary at finalize time. Drift summaries (comparison.kind='drift'
+# on the RunSummary, written by `evalh drift`) highlight the regressed
+# case ids and the pass-rate delta in the Slack message.
+#
+# No new extras are needed for Slack — webhook_trace_store uses httpx
+# directly. The [webhook] extra is only required for Linear (its
+# GraphQL SDK). Anthropic / embeddings are not needed: this example
+# inherits regression_gate's deterministic stub agent.
+#
+# Run:  evalh run examples/slack_drift_notify/eval.yaml
+
+eval:
+  name: slack_drift_notify
+  description: "Webhook trace store as a secondary sink — Slack ping on every run."
+  tags: [webhook, slack, drift, ci]
+
+# Link, don't duplicate. regression_gate itself links to
+# tiny_demo/cases.yaml, so this example points at the same place
+# rather than going through a redirection that doesn't exist as a
+# file. Spec asked for "regression_gate's cases" — these ARE
+# regression_gate's cases.
+dataset:
+  type: yaml
+  path: examples/tiny_demo/cases.yaml
+
+# Same stub agent as regression_gate. Module path resolves via the
+# installed package layout (examples/ is a namespace package).
+systems:
+  - name: agent_stub
+    adapter: python_function
+    target: examples.regression_gate.agent:run
+
+# Identical to regression_gate — the example is about the run-sink
+# contract, not new gating signals.
+evaluators:
+  - name: must_call_listing_tool
+    type: tool_called
+    config:
+      tool_name: get_listing_details
+
+  - name: must_call_suburb_price_tool
+    type: tool_called
+    config:
+      tool_name: get_average_suburb_price
+
+  - name: answer_mentions_suburb
+    type: contains_text
+    config:
+      any_of: [Richmond, Brunswick, Carlton]
+      case_sensitive: false
+
+pass_criteria:
+  all_required:
+    - must_call_listing_tool
+    - must_call_suburb_price_tool
+    - answer_mentions_suburb
+
+run:
+  max_concurrency: 4
+  baseline_variant: agent_stub
+
+# Two-sink output. local_files is the canonical store (idempotent,
+# queryable). The webhook is secondary: failure-soft via
+# RunSummary.sink_errors when listed non-first, and short-circuits
+# cleanly when SLACK_WEBHOOK_URL is unset.
+output:
+  - type: local_files
+    path: runs/
+  - type: webhook
+    platform: slack
+    url: ${SLACK_WEBHOOK_URL:-}
