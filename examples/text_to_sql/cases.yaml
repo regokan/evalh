@@ -1,0 +1,30 @@
+schema_version: "1.0"
+
+dataset:
+  name: text_to_sql
+  description: "Three SQL questions over a tiny customers/orders fixture DB."
+
+# `expected_csv` names the CSV (under fixtures/) holding the canonical row
+# set for this question. The agent copies that file to `expected.csv` in
+# the workspace so `compare.py` can diff against it.
+cases:
+  - id: total_revenue
+    input:
+      question: "What is the total revenue from all orders?"
+      expected_csv: expected_total_revenue.csv
+    metadata:
+      difficulty: easy
+
+  - id: customer_count
+    input:
+      question: "How many customers are in the database?"
+      expected_csv: expected_customer_count.csv
+    metadata:
+      difficulty: easy
+
+  - id: top_spender
+    input:
+      question: "Which customer has spent the most overall? Return their name and total spend."
+      expected_csv: expected_top_spender.csv
+    metadata:
+      difficulty: medium

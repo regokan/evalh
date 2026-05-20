@@ -1,0 +1,90 @@
+# text_to_sql example.
+#
+# An agent that writes SQL for natural-language questions over a fixture
+# customers/orders SQLite database. The agent emits a JSON envelope
+# ({"sql": "...", "intent": "..."}) into `output.structured`; `schema_match`
+# enforces that envelope; and the `command` evaluator executes the agent's
+# SQL via `compare.py` and grades by row-set equality against a checked-in
+# expected CSV.
+#
+# Default mode is OFFLINE: a deterministic stub maps each shipped case to
+# canonical SQL. To swap in Claude as the SQL generator, set
+# EVALH_TEXT_TO_SQL_USE_LLM=1 with ANTHROPIC_API_KEY exported.
+#
+# Required extras for an offline run: none (only the base install).
+# For LLM mode:  pip install 'eval-harness[anthropic]'  + ANTHROPIC_API_KEY.
+#
+# Run:  evalh run examples/text_to_sql/eval.yaml
+
+eval:
+  name: text_to_sql
+  description: "NL → SQL with execution grading against a fixture SQLite DB."
+  tags: [text-to-sql, schema-match, command, demo]
+
+dataset:
+  type: yaml
+  path: examples/text_to_sql/cases.yaml
+
+# tempdir_snapshot seeds every per-case workspace with the contents of
+# fixtures/ (db.sqlite + the expected_*.csv files + seed.py). The agent
+# writes `query.sql`, copies the case's chosen expected CSV to
+# `expected.csv`, and drops compare.py alongside so the command evaluator
+# can run `python compare.py` in the artifact dir.
+workspace:
+  type: tempdir_snapshot
+  copy_from: examples/text_to_sql/fixtures
+
+systems:
+  - name: sql_writer
+    adapter: python_function
+    target: examples.text_to_sql.agent:run
+
+evaluators:
+  # Anchor: schema_match on the agent's JSON envelope. Gating.
+  - name: envelope_well_formed
+    type: schema_match
+    config:
+      field: output.structured
+      schema:
+        type: object
+        required: [sql, intent]
+        additionalProperties: false
+        properties:
+          sql:
+            type: string
+            minLength: 1
+          intent:
+            type: string
+            minLength: 1
+
+  # Execution grading: run the SQL, diff rows against expected.csv. Gating.
+  - name: rows_match_expected
+    type: command
+    config:
+      # cwd defaults to the FilesystemArtifact's artifacts_path — the
+      # workspace snapshot the adapter captured after the agent ran.
+      cmd: [python, compare.py]
+      timeout_seconds: 30
+      expected_exit_code: 0
+
+  # informational — not gating
+  # Sanity check that the agent's final_answer is non-trivial. Kept off
+  # pass_criteria so a chatty/terse final_answer never overrides the
+  # execution-grading verdict.
+  - name: final_answer_nonempty
+    type: contains_text
+    config:
+      all_of: [SELECT]
+
+pass_criteria:
+  all_required:
+    - envelope_well_formed
+    - rows_match_expected
+
+run:
+  max_concurrency: 2
+  baseline_variant: sql_writer
+
+output:
+  - type: local_files
+    path: runs/

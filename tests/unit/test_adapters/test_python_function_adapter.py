@@ -114,6 +114,33 @@ async def test_python_function_adapter_thinking_never_concatenated() -> None:
     assert "FA" not in (trace.output.thinking or "")
 
 
+async def test_python_function_adapter_passes_structured_to_trace_output() -> None:
+    async def my_agent(case: dict[str, Any], variant: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "final_answer": "see structured",
+            "structured": {"sql": "SELECT 1;", "intent": "smoke"},
+        }
+
+    _install_module("fake_pf_mod_structured", run=my_agent)
+    adapter = PythonFunctionAdapter(name="x", target="fake_pf_mod_structured:run")
+    async with adapter:
+        trace = await adapter.run(_case(), _variant(), None)
+    assert trace.output.structured == {"sql": "SELECT 1;", "intent": "smoke"}
+
+
+async def test_python_function_adapter_non_dict_structured_raises() -> None:
+    async def my_agent(case: dict[str, Any], variant: dict[str, Any]) -> dict[str, Any]:
+        return {"final_answer": "x", "structured": ["not", "a", "dict"]}
+
+    _install_module("fake_pf_mod_bad_structured", run=my_agent)
+    adapter = PythonFunctionAdapter(
+        name="x", target="fake_pf_mod_bad_structured:run"
+    )
+    async with adapter:
+        with pytest.raises(AdapterError, match="structured"):
+            await adapter.run(_case(), _variant(), None)
+
+
 async def test_python_function_adapter_target_exception_becomes_adapter_error() -> None:
     def boom(case: dict[str, Any], variant: dict[str, Any]) -> dict[str, Any]:
         raise RuntimeError("nope")
