@@ -136,6 +136,24 @@ def test_linear_api_key_required() -> None:
         WebhookTraceStore(platform="linear")
 
 
+async def test_empty_url_disables_sink_without_error(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """`url: ""` (from `${SLACK_WEBHOOK_URL:-}` with the env var unset)
+    must short-circuit cleanly: no HTTP attempt, no ConfigError at plan
+    time, no AdapterError at run time — just a logged warning. Lets a
+    webhook entry sit in `output:` permanently and only fire when the
+    secret is actually present."""
+    store = WebhookTraceStore(platform="slack", url="")
+    async with store:
+        await store.open("r1", Path("/tmp"))
+        import logging
+
+        with caplog.at_level(logging.WARNING, logger="eval_harness.webhook"):
+            await store.save_summary(_summary())
+    assert any("skipping summary POST" in r.message for r in caplog.records)
+
+
 # ---- URL scheme validation (security) ----------------------------------
 
 

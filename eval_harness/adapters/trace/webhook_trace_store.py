@@ -76,15 +76,20 @@ class WebhookTraceStore:
                 f"webhook trace store: unsupported platform {platform!r}; "
                 f"choose from {sorted(_SUPPORTED_PLATFORMS)}"
             )
-        if platform != "linear" and not url:
+        # Empty url (e.g. `${SLACK_WEBHOOK_URL:-}` with the env var unset)
+        # disables the sink instead of erroring at plan time. This is the
+        # offline-runnable path used by examples/slack_drift_notify and the
+        # CI templates: a webhook entry can sit in `output:` permanently
+        # and only fire when the secret is actually present in the env.
+        # `None` (key absent from config) still raises — we only treat the
+        # explicit-empty-string case as "user is opting out for this run".
+        self._disabled = platform != "linear" and url == ""
+        if platform != "linear" and url is None:
             raise ConfigError(
                 f"webhook trace store ({platform}): 'url' is required "
                 "(the webhook URL)"
             )
-        if platform != "linear" and url is not None:
-            # Reject `file://`, `gopher://`, plain `http://` to non-localhost,
-            # etc. Per `.claude/rules/security.md`. Shared helper keeps the
-            # rule in lockstep with the http SystemAdapter.
+        if platform != "linear" and url is not None and not self._disabled:
             validate_url_scheme(
                 url, adapter_name=f"webhook trace store ({platform})"
             )
@@ -131,6 +136,14 @@ class WebhookTraceStore:
     # ---- save_summary: the only meaningful hook -------------------------
 
     async def save_summary(self, summary: RunSummary) -> None:
+        if self._disabled:
+            import logging
+
+            logging.getLogger("eval_harness.webhook").warning(
+                "webhook trace store (%s): url is empty; skipping summary POST",
+                self.platform,
+            )
+            return
         message = build_summary_message(summary)
         if self.platform == "slack":
             await self._post_slack(message)
