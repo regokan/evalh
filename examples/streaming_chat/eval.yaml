@@ -1,0 +1,85 @@
+# Streaming-chat example.
+#
+# A streaming agent eval focused on time-to-first-token and tokens/sec.
+# Demonstrates the three streaming-only evaluators (`latency_first_token_under`,
+# `tokens_per_second_above`, `stream_completed`) and the variants-as-budget-
+# profiles pattern: two variants of the same agent, each with a different
+# simulated latency profile, scored against two latency budgets — a relaxed
+# one that both variants clear and a tighter one that only the warm-cache
+# variant clears.
+#
+# Runs offline. No API key, no network — the agent synthesises the streaming
+# metrics deterministically from variant metadata.
+#
+# Run:  evalh run examples/streaming_chat/eval.yaml
+
+eval:
+  name: streaming_chat
+  description: "Streaming chat agent — TTFT, throughput, and budget profiles."
+  tags: [streaming, demo]
+
+dataset:
+  type: yaml
+  path: examples/streaming_chat/cases.yaml
+
+# Two variants of the same agent. Variants here are *budget profiles*, not
+# A/B: each simulates a different deployment condition (cold start vs warm
+# cache) by setting different streaming-metric values via metadata.
+systems:
+  - name: streaming-default
+    adapter: python_function
+    target: examples.streaming_chat.agent:run
+    metadata:
+      simulated_ttft_ms: 600
+      simulated_tps: 50
+
+  - name: streaming-warm-cache
+    adapter: python_function
+    target: examples.streaming_chat.agent:run
+    metadata:
+      simulated_ttft_ms: 120
+      simulated_tps: 180
+
+evaluators:
+  # Relaxed budget — what we ship behind. Both variants must clear it.
+  - name: ttft_under_default_budget
+    type: latency_first_token_under
+    config:
+      max_ms: 800
+
+  # Tighter budget — what warm-cache traffic should clear. Default cold-
+  # start variant fails this gate; warm-cache passes it.
+  - name: ttft_under_warm_cache_budget
+    type: latency_first_token_under
+    config:
+      max_ms: 300
+
+  - name: throughput_above_min
+    type: tokens_per_second_above
+    config:
+      min_tps: 30
+
+  - name: stream_must_complete
+    type: stream_completed
+
+  - name: answer_mentions_required_entity
+    type: contains_text
+    # all_of defaults to case.expected.answer_should_include.
+
+# Only the relaxed budget gates the run. The tighter warm-cache budget is
+# kept as an informational evaluator — its per-variant pass rate is the
+# signal in the summary, not a hard CI gate.
+pass_criteria:
+  all_required:
+    - ttft_under_default_budget
+    - throughput_above_min
+    - stream_must_complete
+    - answer_mentions_required_entity
+
+run:
+  max_concurrency: 4
+  baseline_variant: streaming-default
+
+output:
+  - type: local_files
+    path: runs/

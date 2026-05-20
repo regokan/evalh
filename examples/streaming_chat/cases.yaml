@@ -1,0 +1,29 @@
+schema_version: "1.0"
+
+dataset:
+  name: streaming_chat
+  description: "Three short chat prompts. Used to exercise the streaming evaluators."
+
+# Cases are intentionally small and topical. The agent emits a canned answer
+# per case id; the contains_text evaluator's `all_of` defaults to
+# `expected.answer_should_include`, so each case lists the entity its answer
+# must mention.
+
+cases:
+  - id: chat_paris_weather
+    input:
+      user_message: "What's the weather like in Paris right now?"
+    expected:
+      answer_should_include: [Paris]
+
+  - id: chat_usd_to_eur
+    input:
+      user_message: "Convert 100 USD to EUR."
+    expected:
+      answer_should_include: [EUR]
+
+  - id: chat_space_news
+    input:
+      user_message: "Summarise the latest news on space exploration."
+    expected:
+      answer_should_include: [space]
