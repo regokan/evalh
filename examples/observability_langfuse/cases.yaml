@@ -1,0 +1,47 @@
+schema_version: "1.0"
+
+# Fixture dataset for the observability_langfuse example. The
+# `fixture` DatasetAdapter reads cases from this file when LANGFUSE_API_KEY
+# is unset (the offline default). Switch eval.yaml's `dataset:` block to
+# `type: langfuse` to pull cases from production instead — the rest of the
+# eval is unchanged.
+
+dataset:
+  name: observability_langfuse_v1
+  description: "Three deterministic cases for the observability triplet example."
+
+cases:
+  - id: olf_001
+    input:
+      user_message: "What is the average house price near listing ABC123?"
+      listing_id: ABC123
+    metadata:
+      suburb: Richmond
+      # Stand-in trace id so the langfuse enricher (when uncommented) has
+      # an id to fetch.
+      upstream_trace_id: lf_abc123
+    expected:
+      must_call_tools: [get_listing_details, get_average_suburb_price]
+      answer_should_include: [Richmond]
+
+  - id: olf_002
+    input:
+      user_message: "Is listing XYZ789 expensive for its suburb?"
+      listing_id: XYZ789
+    metadata:
+      suburb: Brunswick
+      upstream_trace_id: lf_xyz789
+    expected:
+      must_call_tools: [get_listing_details, get_average_suburb_price]
+      answer_should_include: [Brunswick]
+
+  - id: olf_003
+    input:
+      user_message: "Compare listing DEF456 to its suburb average."
+      listing_id: DEF456
+    metadata:
+      suburb: Carlton
+      upstream_trace_id: lf_def456
+    expected:
+      must_call_tools: [get_listing_details, get_average_suburb_price]
+      answer_should_include: [Carlton]

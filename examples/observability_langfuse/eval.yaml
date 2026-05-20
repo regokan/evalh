@@ -1,0 +1,110 @@
+# Observability triplet — Langfuse as dataset, sink, and enricher.
+#
+# Three patterns in one example (see docs/Observability.md):
+#   1. DatasetAdapter  — pull production traces as cases (commented; opt-in).
+#   2. TraceStore      — mirror our runs to the Langfuse UI (active; no-ops
+#                        with a warning when LANGFUSE_API_KEY is unset).
+#   3. TraceEnricher   — fetch the upstream rich span and merge it into our
+#                        Trace before evaluators run (commented; opt-in).
+#
+# The local sink (`local_files`) stays canonical. Langfuse is a sink/source/
+# enricher — never the source of truth.
+#
+# Runnable offline (no env vars, no [langfuse] extra installed):
+#   evalh run examples/observability_langfuse/eval.yaml
+
+eval:
+  name: observability_langfuse
+  description: "DatasetAdapter + TraceStore + TraceEnricher in one config."
+  tags: [observability, langfuse, demo]
+
+# ----------------------------------------------------------------------
+# Pattern 1: Dataset source
+#
+# Default: read cases from a local fixture so the example runs offline.
+# To pull cases from Langfuse instead, comment out the `fixture` block
+# below and uncomment the `langfuse` block. Everything downstream stays
+# the same — see docs/Observability.md > "Pattern 2".
+# ----------------------------------------------------------------------
+dataset:
+  type: fixture
+  path: examples/observability_langfuse/cases.yaml
+
+# dataset:
+#   type: langfuse
+#   api_key: ${LANGFUSE_API_KEY}
+#   host: ${LANGFUSE_HOST}
+#   filter:
+#     tags: [production]
+#     timestamp_gt: "2026-05-01T00:00:00Z"
+#   sample: 50
+
+systems:
+  - name: deterministic_agent
+    adapter: python_function
+    target: examples.observability_langfuse.agent:run
+    metadata:
+      model: stub
+
+    # ------------------------------------------------------------------
+    # Pattern 3: TraceEnricher
+    #
+    # Folds the upstream Langfuse span (fetched by trace_id) into our
+    # local Trace before evaluators run. Commented out by default — turn
+    # it on once LANGFUSE_API_KEY is exported and the agent is emitting
+    # real Langfuse trace ids. The enricher is failure-soft: ingestion
+    # lag or fetch errors land in `trace.extra.enrichment_errors` and the
+    # cell still runs.
+    # ------------------------------------------------------------------
+    # enrich_trace_from:
+    #   - type: langfuse
+    #     api_key: ${LANGFUSE_API_KEY}
+    #     host: ${LANGFUSE_HOST}
+    #     wait_for_ingestion_seconds: 2
+    #     merge:
+    #       messages: $.observations[*]
+    #       metrics.token_input: $.usage.input
+    #       metrics.token_output: $.usage.output
+    #       metrics.cost_usd: $.totalCost
+
+evaluators:
+  - name: must_call_listing_tool
+    type: tool_called
+    config:
+      tool_name: get_listing_details
+
+  - name: must_call_suburb_price_tool
+    type: tool_called
+    config:
+      tool_name: get_average_suburb_price
+
+  - name: answer_mentions_suburb
+    type: contains_text
+    config:
+      any_of: [Richmond, Brunswick, Carlton]
+      case_sensitive: false
+
+pass_criteria:
+  all_required:
+    - must_call_listing_tool
+    - must_call_suburb_price_tool
+    - answer_mentions_suburb
+
+run:
+  max_concurrency: 4
+  baseline_variant: deterministic_agent
+
+# ----------------------------------------------------------------------
+# Pattern 2: Trace sinks
+#
+# `local_files` is the canonical sink — every run materialises a full
+# `runs/<run_id>/` directory regardless of what other sinks do. `langfuse`
+# is a mirror; when LANGFUSE_API_KEY is unset, the store logs a warning
+# and no-ops, so this list stays correct in both offline and online modes.
+# ----------------------------------------------------------------------
+output:
+  - type: local_files
+    path: runs/
+  - type: langfuse
+    api_key: ${LANGFUSE_API_KEY:-}
+    host: ${LANGFUSE_HOST:-}

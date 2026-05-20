@@ -10,6 +10,7 @@ Auth + SDK plumbing live in `eval_harness._platforms.langfuse.LangfuseClient`.
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from types import TracebackType
 from typing import Any, Self
@@ -20,6 +21,8 @@ from eval_harness._platforms.langfuse import (
     release_langfuse_client,
 )
 from eval_harness.core.errors import AdapterError
+
+_log = logging.getLogger(__name__)
 from eval_harness.core.models import (
     EvaluationResult,
     FilesystemArtifact,
@@ -50,11 +53,22 @@ class LangfuseTraceStore:
         client: LangfuseClient | None = None,
         **_extra: Any,
     ) -> None:
-        self._owns_client = client is None
-        self._client: LangfuseClient = client or get_or_create_langfuse_client(
-            api_key=api_key, host=host
-        )
+        # When invoked as a secondary sink in a multi-sink output, an empty
+        # api_key (e.g. from `${LANGFUSE_API_KEY:-}` expansion when the env var
+        # is unset) flips the store into a no-op. This keeps examples that
+        # ship a langfuse sink runnable offline without the [langfuse] extra
+        # installed — the SDK import is skipped entirely in disabled mode.
+        self._disabled = client is None and not api_key
+        self._owns_client = client is None and not self._disabled
+        self._client: LangfuseClient | None
+        if self._disabled:
+            self._client = None
+        else:
+            self._client = client or get_or_create_langfuse_client(
+                api_key=api_key, host=host
+            )
         self._run_id: str = ""
+        self._warned_disabled = False
         self.rendered_config: dict[str, Any] | None = None
 
     async def __aenter__(self) -> Self:
@@ -66,6 +80,8 @@ class LangfuseTraceStore:
         exc: BaseException | None,
         tb: TracebackType | None,
     ) -> None:
+        if self._disabled or self._client is None:
+            return
         # Best-effort drain so writes leave our process before the run's
         # AsyncExitStack tears down.
         try:
@@ -76,10 +92,21 @@ class LangfuseTraceStore:
 
     async def open(self, run_id: str, run_dir: Path) -> None:
         self._run_id = run_id
+        if self._disabled and not self._warned_disabled:
+            _log.warning(
+                "LangfuseTraceStore: LANGFUSE_API_KEY is unset; the langfuse "
+                "sink will no-op for run %s. Set LANGFUSE_API_KEY (and "
+                "optionally LANGFUSE_HOST) to mirror traces to Langfuse.",
+                run_id,
+            )
+            self._warned_disabled = True
 
     async def save_trace(self, trace: Trace) -> None:
+        if self._disabled:
+            return
         if not self._run_id:
             raise AdapterError("LangfuseTraceStore: save_trace before open()")
+        assert self._client is not None
         payload = _trace_to_langfuse(trace, run_id=self._run_id)
         await self._client.push_trace(payload)
 
@@ -87,6 +114,8 @@ class LangfuseTraceStore:
         # Idempotency lives on the canonical sink (local_files / sqlite /
         # postgres). Langfuse always-writes; duplicates are deduped on
         # the Langfuse side if the user configures it.
+        if self._disabled:
+            return True
         await self.save_trace(trace)
         return True
 
@@ -96,8 +125,9 @@ class LangfuseTraceStore:
         variant: str,
         results: list[EvaluationResult],
     ) -> None:
-        if not results:
+        if self._disabled or not results:
             return
+        assert self._client is not None
         # Each EvaluationResult becomes one Langfuse score row. We pack them
         # into a single push_trace call so the SDK shim can decide whether to
         # split into multiple network requests (the production SDK batches).
