@@ -1,0 +1,103 @@
+# Multi-turn-support example.
+#
+# First example of the `user_simulator` SystemAdapter: an LLM-driven user
+# persona drives a multi-turn conversation against an inner agent under
+# test. The `llm_judge` evaluator grades the full transcript via
+# `include_in_prompt: [..., messages]`.
+#
+# Online-only. The simulator needs an LLM to play the user role, so a
+# deterministic offline mode would defeat the adapter's value-prop. See
+# the "Deviation from plan.md" note at the top of README.md.
+#
+# Required env: ANTHROPIC_API_KEY.
+# CI does not run this — cost + key. Use examples/tiny_demo/ for the
+# always-runnable smoke test.
+#
+# Run:  evalh run examples/multi_turn_support/eval.yaml
+
+eval:
+  name: multi_turn_support
+  description: "Multi-turn support bot — user_simulator drives the conversation; llm_judge grades the transcript."
+  tags: [multi-turn, user-simulator, demo]
+
+dataset:
+  type: yaml
+  path: examples/multi_turn_support/cases.yaml
+
+# Two variants — each pins a distinct user persona that the simulator plays
+# for every case. Variant is the persona axis because user_simulator takes
+# `user_persona_prompt` at init time (see README "Deviation"). The runner
+# expands cases × variants = a small matrix; the per-variant summary tells
+# you which persona stresses the agent more.
+systems:
+  - name: frustrated_buyer
+    adapter: user_simulator
+    user_model: claude-haiku-4-5
+    user_persona_prompt: |-
+      You are a frustrated first-time home buyer talking to a support agent.
+      You feel underserved by previous agents, so you are terse, slightly
+      impatient, and you do NOT volunteer information unless directly asked.
+      Keep replies under two sentences. When the agent has actually resolved
+      your stated goal, reply exactly: "thanks, that resolves it".
+    max_turns: 5
+    stopping_criterion:
+      type: content_match
+      patterns: ["resolves it", "all set"]
+    inner_system:
+      adapter: python_function
+      target: examples.multi_turn_support.agent:run
+    cost_limit_usd: 0.25
+    metadata:
+      persona: frustrated_buyer
+
+  - name: efficient_buyer
+    adapter: user_simulator
+    user_model: claude-haiku-4-5
+    user_persona_prompt: |-
+      You are an efficient home buyer who already knows the basics. You answer
+      directly, supply useful context up front (timelines, dollar figures), and
+      do not ramble. Keep replies under two sentences. When the agent has
+      actually resolved your stated goal, reply exactly: "all set, thanks".
+    max_turns: 5
+    stopping_criterion:
+      type: content_match
+      patterns: ["resolves it", "all set"]
+    inner_system:
+      adapter: python_function
+      target: examples.multi_turn_support.agent:run
+    cost_limit_usd: 0.25
+    metadata:
+      persona: efficient_buyer
+
+evaluators:
+  # Gating. Reads the FULL transcript via include_in_prompt: [messages] so
+  # the judge can grade conversational hygiene (no repeated asks, goal
+  # resolution within the available turns) — not just the final answer.
+  - name: conversation_quality
+    type: llm_judge
+    config:
+      model: claude-4-7
+      include_in_prompt:
+        - input.user_message
+        - messages
+        - output.final_answer
+      nl_assertions:
+        - "The agent never asked the user for the same piece of information twice across the conversation."
+        - "The agent resolved (or made a concrete, actionable plan to resolve) the user's stated goal within the turns shown."
+        - "The agent's final reply is concrete and grounded — it does not defer with a vague 'someone will be in touch' without specifics."
+      pass_when: all
+      cost_limit_usd: 0.05
+      max_tokens: 1024
+
+pass_criteria:
+  all_required:
+    - conversation_quality
+
+run:
+  max_concurrency: 2
+  baseline_variant: efficient_buyer
+  cost_limit_usd: 1.00
+
+output:
+  - type: local_files
+    path: runs/

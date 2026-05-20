@@ -1,0 +1,57 @@
+schema_version: "1.0"
+
+dataset:
+  name: multi_turn_support
+  description: "Synthetic mortgage-support scenarios — each case seeds the user's opening turn."
+
+# Each case carries `metadata.persona` to tag its intended natural-fit
+# variant in eval.yaml (`frustrated_buyer` vs `efficient_buyer`). The matrix
+# still runs every case against every variant — the cross-pair cells
+# stress-test the agent against the "wrong" user style.
+#
+# `metadata.persona` is informational. The simulator persona that actually
+# runs comes from variant.user_persona_prompt in eval.yaml.
+cases:
+  - id: rate_lock_window
+    input:
+      user_message: |-
+        Hi — I have an active mortgage application. Can I lock my rate today
+        and close next month, or is it still too early in the process?
+    metadata:
+      persona: efficient_buyer
+      topic: rate_lock
+    expected:
+      answer_should_include: [rate]
+
+  - id: appraisal_came_in_low
+    input:
+      user_message: |-
+        The appraisal on my new place came in $15,000 under contract price.
+        What are my options? I close in three weeks.
+    metadata:
+      persona: efficient_buyer
+      topic: appraisal
+    expected:
+      answer_should_include: [option]
+
+  - id: first_time_buyer_help
+    input:
+      user_message: |-
+        I'm a first-time buyer and I keep getting bounced around. Do you
+        actually have any programs that help with the down payment, or not?
+    metadata:
+      persona: frustrated_buyer
+      topic: down_payment
+    expected:
+      answer_should_include: [program]
+
+  - id: pmi_removal
+    input:
+      user_message: |-
+        Look, I just want to stop paying PMI. My loan is two years old. Yes
+        or no — can it come off now?
+    metadata:
+      persona: frustrated_buyer
+      topic: pmi
+    expected:
+      answer_should_include: [PMI]
